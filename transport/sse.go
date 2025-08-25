@@ -1,8 +1,8 @@
 /*
  * @Author: kamalyes 501893067@qq.com
  * @Date: 2025-07-28 20:51:00
- * @LastEditors: kamalyes 501893067@qq.com
- * @LastEditTime: 2025-07-28 20:58:00
+ * @LastEditors: wmxuan 836551135@qq.com
+ * @LastEditTime: 2025-08-25 21:07:00
  * @FilePath: \go-llmx\transport\sse.go
  * @Description: SSE 流式解析器 —— 标准协议逐帧解析：
  * data:/event: 行、冒号注释行（网关心跳）、空行事件边界、多行 data 按 \n 拼接.
@@ -41,7 +41,7 @@ func ReadSSE(r io.Reader, on func(ev SSEEvent) error) error {
 		event string
 		data  []string
 		chunk []byte
-		buf   [2048]byte
+		buf   [4096]byte
 	)
 
 	for {
