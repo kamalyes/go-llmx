@@ -1,8 +1,8 @@
 /*
  * @Author: kamalyes 501893067@qq.com
  * @Date: 2025-09-19 21:12:00
- * @LastEditors: kamalyes 501893067@qq.com
- * @LastEditTime: 2025-09-19 21:23:00
+ * @LastEditors: wmxuan 836551135@qq.com
+ * @LastEditTime: 2025-09-26 20:53:00
  * @FilePath: \go-llmx\tool\tool.go
  * @Description: 工具调用体系 —— Tool 定义 + RunToolLoop 循环执行器.
  * ReAct 简化版：模型请求工具 → 执行 → 结果回传 → 直至产出最终回答，
@@ -52,7 +52,7 @@ func (t Tool) Def() llmx.ToolDef {
 
 // DefaultMaxToolIterations 工具循环默认上限（防失控自旋）.
 // [EN] Default tool loop limit (guards against runaway loops).
-const DefaultMaxToolIterations = 6
+const DefaultMaxToolIterations = 8
 
 // RunToolLoop 执行工具调用循环直至模型产出最终回答.
 // [EN] Run the tool call loop until the model yields a final answer.
