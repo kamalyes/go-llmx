@@ -2,7 +2,7 @@
  * @Author: kamalyes 501893067@qq.com
  * @Date: 2025-10-13 22:18:00
  * @LastEditors: kamalyes 501893067@qq.com
- * @LastEditTime: 2025-10-13 22:26:00
+ * @LastEditTime: 2025-10-27 21:26:00
  * @FilePath: \go-llmx\memory\window.go
  * @Description: 滑动窗口记忆 —— 仅保留最近 K 条消息，
  * 控制长对话的上下文长度
@@ -50,7 +50,7 @@ func (w *Window) Add(messages ...llmx.Message) {
 	defer w.mu.Unlock()
 	w.msgs = append(w.msgs, messages...)
 	if overflow := len(w.msgs) - w.k; overflow > 0 {
-		w.msgs = w.msgs[overflow:]
+		w.msgs = append([]llmx.Message(nil), w.msgs[overflow:]...)
 	}
 }
 

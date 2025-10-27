@@ -2,7 +2,7 @@
  * @Author: kamalyes 501893067@qq.com
  * @Date: 2025-10-13 20:33:00
  * @LastEditors: kamalyes 501893067@qq.com
- * @LastEditTime: 2025-10-13 20:41:00
+ * @LastEditTime: 2025-10-27 21:19:00
  * @FilePath: \go-llmx\chain\llmchain.go
  * @Description: LLMChain —— 提示词模板 → 模型直调链（无状态），
  * 最常用的单步编排单元
@@ -50,7 +50,7 @@ func (c *LLMChain) Run(ctx context.Context, input string) (string, error) {
 		}
 		text = rendered
 	}
-	resp, err := c.Model.GenerateContent(ctx, []llmx.Message{llmx.Text(llmx.RoleUser, text)}, c.Options...)
+	resp, err := c.Model.GenerateContent(ctx, []llmx.Message{llmx.User(text)}, c.Options...)
 	if err != nil {
 		return "", err
 	}
