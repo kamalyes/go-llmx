@@ -2,7 +2,7 @@
  * @Author: kamalyes 501893067@qq.com
  * @Date: 2025-11-07 21:29:00
  * @LastEditors: kamalyes 501893067@qq.com
- * @LastEditTime: 2025-11-07 21:36:00
+ * @LastEditTime: 2025-11-25 21:33:00
  * @FilePath: \go-llmx\adapters\vectorstores\memory\memory.go
  * @Description: 内存向量库 —— 进程内余弦相似度检索（单测/原型/小规模数据）.
  * 零依赖并发安全实现；相似度数学见 math.go，生产规模见 redis/pgvector 适配器
@@ -76,7 +76,6 @@ func (s *Store) SimilaritySearch(_ context.Context, query []float64, topK int, f
 	}
 
 	s.mu.RLock()
-	defer s.mu.RUnlock()
 	type scored struct {
 		doc   llmx.Document
 		score float64
@@ -88,6 +87,7 @@ func (s *Store) SimilaritySearch(_ context.Context, query []float64, topK int, f
 		}
 		hits = append(hits, scored{doc: e.doc, score: CosineSimilarity(query, e.vector)})
 	}
+	s.mu.RUnlock()
 
 	// 相似度降序，稳定排序保持同分写入顺序
 	sort.SliceStable(hits, func(i, j int) bool { return hits[i].score > hits[j].score })
