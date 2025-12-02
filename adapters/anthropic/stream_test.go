@@ -1,8 +1,8 @@
 /*
  * @Author: kamalyes 501893067@qq.com
  * @Date: 2025-11-21 21:53:00
- * @LastEditors: kamalyes 501893067@qq.com
- * @LastEditTime: 2025-11-21 21:53:00
+ * @LastEditors: wmxuan 836551135@qq.com
+ * @LastEditTime: 2025-12-02 20:36:00
  * @FilePath: \go-llmx\adapters\anthropic\stream_test.go
  * @Description: Anthropic 适配器流式聚合测试 —— 按事件名分发的增量聚合：
  * text/thinking/tool 参数拼接、ping/注释/非 JSON 帧容错、中断与空流路径.
@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	llmx "github.com/kamalyes/go-llmx"
+	"github.com/kamalyes/go-llmx/transport"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -264,4 +265,35 @@ func TestStreamToolDeltaWithoutBlockStart(t *testing.T) {
 	calls := resp.Choices[0].ToolCalls()
 	require.Len(t, calls, 1)
 	assert.JSONEq(t, `{"x":9}`, calls[0].Arguments)
+}
+
+
+// ============================================================================
+// 聚合器边界（直接驱动 feed，不经 HTTP mock）
+// ============================================================================
+
+// TestStreamAggregator_OutOfOrderToolDelta 乱序 input_json_delta 帧兜底：
+// 未先见 content_block_start 时按 index 兜底建块，参数不丢、回调照常透传.
+// [EN] Out-of-order input_json_delta frames fall back to index-keyed blocks.
+func TestStreamAggregator_OutOfOrderToolDelta(t *testing.T) {
+	agg := newStreamAggregator()
+	var deltas []llmx.ToolCallDelta
+	handler := func(ch *llmx.Chunk) error {
+		if ch.ToolCallDelta != nil {
+			deltas = append(deltas, *ch.ToolCallDelta)
+		}
+		return nil
+	}
+
+	frame := transport.SSEEvent{Event: "content_block_delta", Data: `{"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":"{\"x\":"}}`}
+	require.NoError(t, agg.feed(frame, handler))
+	frame.Data = `{"type":"content_block_delta","index":2,"delta":{"type":"input_json_delta","partial_json":"1}"}}`
+	require.NoError(t, agg.feed(frame, handler))
+
+	resp := agg.response("claude-3")
+	calls := resp.Choices[0].ToolCalls()
+	require.Len(t, calls, 1)
+	assert.Equal(t, `{"x":1}`, calls[0].Arguments)
+	require.Len(t, deltas, 2)
+	assert.Equal(t, 2, deltas[0].Index)
 }
