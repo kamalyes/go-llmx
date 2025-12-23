@@ -2,7 +2,7 @@
  * @Author: kamalyes 501893067@qq.com
  * @Date: 2025-12-09 23:07:00
  * @LastEditors: kamalyes 501893067@qq.com
- * @LastEditTime: 2025-12-09 23:11:00
+ * @LastEditTime: 2025-12-23 21:52:00
  * @FilePath: \go-llmx\fake.go
  * @Description: 内存 Fake 模型 —— 无网络单测 / 框架联调桩.
  * 预设回复按序消费，同时捕获请求供断言（替代 langchaingo testcontainers 的轻量方案）
@@ -15,11 +15,14 @@ package llmx
 import (
 	"context"
 	"fmt"
+	"sync"
 )
 
 // FakeModel 预设回复的内存模型（测试与本地联调）.
 // [EN] In-memory model with canned responses (for tests and local wiring).
 type FakeModel struct {
+	mu sync.Mutex
+
 	// Responses 预设回复序列：每次调用按序弹出，耗尽后复读最后一个.
 	Responses []*Response
 
@@ -54,6 +57,8 @@ func NewFakeModel(texts ...string) *FakeModel {
 // GenerateContent 实现非流式生成（按序弹出预设回复）.
 // [EN] Implement non-streaming generation (pop canned response in order).
 func (f *FakeModel) GenerateContent(_ context.Context, messages []Message, opts ...Option) (*Response, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.Calls = append(f.Calls, messages)
 	f.CallOptions = append(f.CallOptions, Apply(opts...))
 	if f.Err != nil {
@@ -72,9 +77,11 @@ func (f *FakeModel) GenerateContent(_ context.Context, messages []Message, opts 
 // StreamGenerateContent 实现流式生成（将预设文本按字符切帧吐出）.
 // [EN] Implement streaming generation (emit canned text char by char).
 func (f *FakeModel) StreamGenerateContent(_ context.Context, messages []Message, stream StreamHandler, opts ...Option) (*Response, error) {
+	f.mu.Lock()
 	f.Calls = append(f.Calls, messages)
 	f.CallOptions = append(f.CallOptions, Apply(opts...))
 	if f.Err != nil {
+		f.mu.Unlock()
 		return nil, f.Err
 	}
 	text := ""
@@ -84,6 +91,7 @@ func (f *FakeModel) StreamGenerateContent(_ context.Context, messages []Message,
 			f.Responses = f.Responses[1:]
 		}
 	}
+	f.mu.Unlock()
 
 	var collected string
 	if stream != nil {
@@ -118,6 +126,8 @@ func assembleStreamed(text string, f *FakeModel) *Response {
 // LastCall 返回最近一次调用的消息输入（无调用报错提示）.
 // [EN] Return the messages of the most recent call.
 func (f *FakeModel) LastCall() []Message {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if len(f.Calls) == 0 {
 		return nil
 	}
@@ -127,6 +137,8 @@ func (f *FakeModel) LastCall() []Message {
 // CallCount 返回累计调用次数.
 // [EN] Return the total call count.
 func (f *FakeModel) CallCount() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	return len(f.Calls)
 }
 
