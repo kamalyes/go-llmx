@@ -2,7 +2,7 @@
  * @Author: kamalyes 501893067@qq.com
  * @Date: 2025-12-09 20:35:00
  * @LastEditors: kamalyes 501893067@qq.com
- * @LastEditTime: 2025-12-09 20:35:00
+ * @LastEditTime: 2026-05-25 21:38:00
  * @FilePath: \go-llmx\adapters\ollama\ollama.go
  * @Description: Ollama 本地推理对话适配器 —— 编排 transport 传输与 wire 编解码.
  * NDJSON 流式（transport.DoNDJSON）；客户端基座与错误映射骨架见核心库 adapter 包；
@@ -24,8 +24,8 @@ import (
 // Client Ollama 对话客户端（嵌入能力见 embedder 子包）.
 // [EN] Ollama chat client (embedding in the embedder subpackage).
 type Client struct {
-	// adapter.Base 客户端基座（端点/模型/密钥/传输 + 访问器）.
-	// [EN] Client base (endpoint/model/key/transport + accessors).
+	// adapter.Base 客户端基座（端点/模型/密钥/传输/日志 + 访问器）.
+	// [EN] Client base (endpoint/model/key/transport/logger + accessors).
 	adapter.Base
 }
 
@@ -60,6 +60,9 @@ var (
 	// [EN] Inject a custom http.Client.
 	WithHTTPClient = adapter.WithHTTPClient
 
+	// WithLogger 注入日志（缺省静默）.
+	// [EN] Inject a logger.
+	WithLogger = adapter.WithLogger
 )
 
 // New 构造客户端（opts 可覆盖端点/模型/超时；默认本地 11434 + llama3.2）.
@@ -75,6 +78,7 @@ func New(apiKey string, opts ...Option) *Client {
 // [EN] Implement llmx.Model (non-streaming).
 func (c *Client) GenerateContent(ctx context.Context, messages []llmx.Message, opts ...llmx.Option) (*llmx.Response, error) {
 	o := llmx.Apply(opts...)
+	c.LogModel(ctx, c.ResolveModel(o), "chat", len(messages))
 
 	var wr wireResponse
 	if err := c.TC.PostJSON(ctx, c.GetEndpoint(), c.buildRequest(o, messages, false), &wr, c.headers()); err != nil {
@@ -107,6 +111,7 @@ func (c *Client) StreamGenerateContent(ctx context.Context, messages []llmx.Mess
 	}
 
 	o := llmx.Apply(opts...)
+	c.LogModel(ctx, c.ResolveModel(o), "stream", len(messages))
 	st := newStreamAggregator()
 
 	err := c.TC.DoNDJSON(ctx, transport.MethodPost, c.GetEndpoint(),

@@ -2,7 +2,7 @@
  * @Author: kamalyes 501893067@qq.com
  * @Date: 2025-08-11 20:58:00
  * @LastEditors: kamalyes 501893067@qq.com
- * @LastEditTime: 2025-08-11 20:58:00
+ * @LastEditTime: 2026-05-25 20:52:00
  * @FilePath: \go-llmx\adapter\client.go
  * @Description: 适配器公共基座 —— Client 字段/选项/访问器/请求组装骨架.
  * openai/anthropic 等对话适配器内嵌 Base 复用全部客户端管理能力，
@@ -14,16 +14,19 @@
 package adapter
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"time"
 
 	llmx "github.com/kamalyes/go-llmx"
 	"github.com/kamalyes/go-llmx/transport"
+
+	"github.com/kamalyes/go-logger"
 )
 
-// Base 适配器客户端基座（apiKey/端点/模型/传输的公共管理）.
-// [EN] Adapter client base (shared apiKey/endpoint/model/transport management).
+// Base 适配器客户端基座（apiKey/端点/模型/传输/日志的公共管理）.
+// [EN] Adapter client base (shared apiKey/endpoint/model/transport/logger management).
 type Base struct {
 	// APIKey 认证密钥（认证头形态由各适配器构造）.
 	// [EN] Auth key (header style is adapter-specific).
@@ -44,17 +47,22 @@ type Base struct {
 	// TC 公共传输客户端（JSON/SSE 收口）.
 	// [EN] Shared transport client.
 	TC *transport.Client
+
+	// Logger 日志（缺省静默）.
+	// [EN] Logger (silent by default).
+	Logger logger.ILogger
 }
 
-// NewBase 构造基座（path 必填；传输取默认；BaseURL 由适配器填默认端点）.
-// [EN] Build a base (path required; transport defaulted; BaseURL set by the adapter).
+// NewBase 构造基座（path 必填；传输与日志取默认；BaseURL 由适配器填默认端点）.
+// [EN] Build a base (path required; transport/logger defaulted; BaseURL set by the adapter).
 func NewBase(path, apiKey, defaultModel string) Base {
 	b := Base{
 		APIKey: apiKey,
 		Model:  defaultModel,
 		Path:   path,
+		Logger: logger.NewEmptyLogger(),
 	}
-	b.TC = transport.NewClient()
+	b.TC = transport.NewClient(transport.WithLogger(b.Logger))
 	return b
 }
 
@@ -92,7 +100,8 @@ func WithModel(m string) Option {
 // [EN] Set the total request timeout.
 func WithTimeout(d time.Duration) Option {
 	return func(h HasBase) {
-		h.Adapter().TC = transport.NewClient(transport.WithTimeout(d))
+		b := h.Adapter()
+		b.TC = transport.NewClient(transport.WithTimeout(d), transport.WithLogger(b.Logger))
 	}
 }
 
@@ -101,7 +110,20 @@ func WithTimeout(d time.Duration) Option {
 func WithHTTPClient(hc *http.Client) Option {
 	return func(h HasBase) {
 		if hc != nil {
-			h.Adapter().TC = transport.NewClient(transport.WithHTTPClient(hc))
+			b := h.Adapter()
+			b.TC = transport.NewClient(transport.WithHTTPClient(hc), transport.WithLogger(b.Logger))
+		}
+	}
+}
+
+// WithLogger 注入日志（缺省静默；同步联动传输层，ContextKV 全链路追踪）.
+// [EN] Inject a logger (silent by default; linked into the transport layer for full tracing).
+func WithLogger(l logger.ILogger) Option {
+	return func(h HasBase) {
+		if l != nil {
+			b := h.Adapter()
+			b.Logger = l
+			b.TC.SetLogger(l)
 		}
 	}
 }
@@ -151,6 +173,14 @@ func (b *Base) SetAPIKey(key string) { b.APIKey = key }
 // GetEndpoint 返回完整协议 URL（baseURL + path 收口拼接）.
 // [EN] Return the full protocol URL.
 func (b *Base) GetEndpoint() string { return b.BaseURL + b.Path }
+
+// LogModel 模型调用打点（chat/stream/embed 三模式收口；带 ctx 全链路追踪）.
+// [EN] Model invocation log (chat/stream/embed; ctx carried for full tracing).
+//
+// mode 取 "chat" / "stream" / "embed"；n 为消息数或文档数
+func (b *Base) LogModel(ctx context.Context, model, mode string, n int) {
+	b.Logger.InfoContextKV(ctx, "[LLMX] "+mode, "model", model, "count", n)
+}
 
 // ResolveModel 解析本次实际模型（请求级覆盖 > 客户端默认）.
 // [EN] Resolve the effective model (per-call override wins).

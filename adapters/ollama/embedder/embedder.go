@@ -2,7 +2,7 @@
  * @Author: kamalyes 501893067@qq.com
  * @Date: 2025-12-09 22:37:00
  * @LastEditors: kamalyes 501893067@qq.com
- * @LastEditTime: 2025-12-09 22:37:00
+ * @LastEditTime: 2026-05-25 21:53:00
  * @FilePath: \go-llmx\adapters\ollama\embedder\embedder.go
  * @Description: Ollama 原生嵌入适配器 —— /api/embed 协议.
  * 独立子包实现 llmx.Embedder（与对话客户端独立配置端点/模型）
@@ -22,8 +22,8 @@ import (
 // Client Ollama 原生嵌入客户端.
 // [EN] Ollama native embedding client.
 type Client struct {
-	// adapter.Base 客户端基座（端点/模型/密钥/传输 + 访问器）.
-	// [EN] Client base (endpoint/model/key/transport + accessors).
+	// adapter.Base 客户端基座（端点/模型/密钥/传输/日志 + 访问器）.
+	// [EN] Client base (endpoint/model/key/transport/logger + accessors).
 	adapter.Base
 }
 
@@ -58,6 +58,9 @@ var (
 	// [EN] Inject a custom http.Client.
 	WithHTTPClient = adapter.WithHTTPClient
 
+	// WithLogger 注入日志（缺省静默）.
+	// [EN] Inject a logger.
+	WithLogger = adapter.WithLogger
 )
 
 // New 构造客户端（opts 可覆盖端点/模型/超时；默认本地 11434 + nomic-embed-text）.
@@ -91,6 +94,11 @@ func (c *Client) EmbedQuery(ctx context.Context, text string) ([]float64, error)
 // embed 统一嵌入入口（协议 input 两形态收口：string 单条 / []string 批量）.
 // [EN] Unified embedding entry (input shape: string / []string).
 func (c *Client) embed(ctx context.Context, input any) ([][]float64, error) {
+	n := 1
+	if texts, ok := input.([]string); ok {
+		n = len(texts)
+	}
+	c.LogModel(ctx, c.Model, "embed", n)
 
 	var wr wireResponse
 	if err := c.TC.PostJSON(ctx, c.GetEndpoint(), &wireRequest{

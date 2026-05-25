@@ -2,7 +2,7 @@
  * @Author: kamalyes 501893067@qq.com
  * @Date: 2025-09-01 20:28:00
  * @LastEditors: kamalyes 501893067@qq.com
- * @LastEditTime: 2025-09-01 20:28:00
+ * @LastEditTime: 2026-05-25 20:58:00
  * @FilePath: \go-llmx\adapters\openai\openai.go
  * @Description: OpenAI 兼容对话适配器 —— 编排 transport 传输与 wire 编解码.
  * 覆盖 OpenAI / DeepSeek / OpenRouter / Groq / vLLM 等兼容端点（WithBaseURL 切换）；
@@ -25,8 +25,8 @@ import (
 // Client OpenAI 兼容客户端（对话 + 嵌入双能力）.
 // [EN] OpenAI-compatible client (chat + embedding).
 type Client struct {
-	// adapter.Base 客户端基座（端点/模型/密钥/传输 + 访问器）.
-	// [EN] Client base (endpoint/model/key/transport + accessors).
+	// adapter.Base 客户端基座（端点/模型/密钥/传输/日志 + 访问器）.
+	// [EN] Client base (endpoint/model/key/transport/logger + accessors).
 	adapter.Base
 
 	// embedModel 嵌入模型（与对话模型独立管理）.
@@ -65,6 +65,9 @@ var (
 	// [EN] Inject a custom http.Client.
 	WithHTTPClient = adapter.WithHTTPClient
 
+	// WithLogger 注入日志（缺省静默）.
+	// [EN] Inject a logger.
+	WithLogger = adapter.WithLogger
 )
 
 // New 构造客户端（opts 可覆盖端点/模型/超时；默认 gpt-4o-mini + 120s）.
@@ -80,6 +83,7 @@ func New(apiKey string, opts ...Option) *Client {
 // [EN] Implement llmx.Model (non-streaming).
 func (c *Client) GenerateContent(ctx context.Context, messages []llmx.Message, opts ...llmx.Option) (*llmx.Response, error) {
 	o := llmx.Apply(opts...)
+	c.LogModel(ctx, c.ResolveModel(o), "chat", len(messages))
 
 	var wr wireResponse
 	if err := c.TC.PostJSON(ctx, c.GetEndpoint(), c.buildRequest(o, messages, false), &wr, c.headers()); err != nil {
@@ -117,6 +121,7 @@ func (c *Client) StreamGenerateContent(ctx context.Context, messages []llmx.Mess
 	}
 
 	o := llmx.Apply(opts...)
+	c.LogModel(ctx, c.ResolveModel(o), "stream", len(messages))
 	st := newStreamAggregator()
 
 	err := c.TC.DoStream(ctx, transport.MethodPost, c.GetEndpoint(),

@@ -2,7 +2,7 @@
  * @Author: kamalyes 501893067@qq.com
  * @Date: 2025-09-01 21:26:00
  * @LastEditors: kamalyes 501893067@qq.com
- * @LastEditTime: 2025-09-01 21:26:00
+ * @LastEditTime: 2026-05-25 21:07:00
  * @FilePath: \go-llmx\adapters\openai\openai_test.go
  * @Description: OpenAI 适配器编排层测试 —— 客户端生命周期/访问器/请求组装/基础收发.
  * mock 基建在本文件维护，供 wire/stream/errors 测试共享；协议编解码见 wire_test.go，
@@ -24,6 +24,7 @@ import (
 	"time"
 
 	llmx "github.com/kamalyes/go-llmx"
+	"github.com/kamalyes/go-logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -233,4 +234,13 @@ func TestAccessorWithOverrides(t *testing.T) {
 
 	_, err := c.GenerateContent(context.Background(), []llmx.Message{llmx.User("q")})
 	require.NoError(t, err)
+}
+
+func TestWithLogger(t *testing.T) {
+	// nil 注入不覆盖默认静默 logger
+	c := New("k", WithLogger(nil))
+	assert.NotNil(t, c.Logger)
+
+	c2 := New("k", WithLogger(logger.NewEmptyLogger()))
+	assert.NotNil(t, c2.Logger)
 }

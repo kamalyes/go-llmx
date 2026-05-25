@@ -12,11 +12,14 @@
 package adapter
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 	"testing"
 	"time"
 
 	llmx "github.com/kamalyes/go-llmx"
+	"github.com/kamalyes/go-logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -45,11 +48,13 @@ func TestNewBase_Defaults(t *testing.T) {
 	assert.Equal(t, "k", b.APIKey)
 	assert.Equal(t, "m", b.Model)
 	assert.Equal(t, "/chat", b.Path)
-	// 传输取默认（非 nil，可安全收发）
+	// 传输与日志取默认（非 nil，可安全收发）
 	require.NotNil(t, b.TC)
+	require.NotNil(t, b.Logger)
 }
 
 func TestOptions_All(t *testing.T) {
+	l := logger.NewEmptyLogger()
 	hc := &http.Client{Timeout: 3 * time.Second}
 	c := newTestClient(
 		WithAPIKey("key-1"),
@@ -57,6 +62,7 @@ func TestOptions_All(t *testing.T) {
 		WithModel("m-1"),
 		WithTimeout(5*time.Second),
 		WithHTTPClient(hc),
+		WithLogger(l),
 	)
 
 	assert.Equal(t, "key-1", c.APIKey)
@@ -64,12 +70,14 @@ func TestOptions_All(t *testing.T) {
 	assert.Equal(t, "https://gw.example.com", c.BaseURL)
 	assert.Equal(t, "m-1", c.Model)
 	require.NotNil(t, c.TC)
+	require.NotNil(t, c.Logger)
 }
 
 func TestOptions_NilIgnored(t *testing.T) {
-	// nil http.Client 不覆盖默认装配
-	c := newTestClient(WithHTTPClient(nil))
+	// nil http.Client / nil logger 不覆盖默认装配
+	c := newTestClient(WithHTTPClient(nil), WithLogger(nil))
 	require.NotNil(t, c.TC)
+	require.NotNil(t, c.Logger)
 
 	// Apply 跳过 nil 选项
 	Apply(c, nil, WithAPIKey("k2"), nil)
@@ -108,4 +116,44 @@ func TestResolveModel(t *testing.T) {
 	assert.Equal(t, "m-0", c.ResolveModel(&llmx.Options{}))
 	// 请求级覆盖优先
 	assert.Equal(t, "gpt-x", c.ResolveModel(&llmx.Options{Model: "gpt-x"}))
+}
+
+// ============================================================================
+// 日志联动（ctx → Base.Logger → TC.Logger 全链路贯通）
+// ============================================================================
+
+// captureLogger 日志捕获器（嵌入空实现，仅覆盖 InfoContextKV）.
+// [EN] Log capturer (embeds the empty impl, overriding InfoContextKV).
+type captureLogger struct {
+	*logger.EmptyLogger
+	captured string
+}
+
+func (c *captureLogger) InfoContextKV(_ context.Context, msg string, kv ...interface{}) {
+	c.captured = msg + " " + fmt.Sprint(kv...)
+}
+
+func TestLogModel(t *testing.T) {
+	cl := &captureLogger{EmptyLogger: logger.NewEmptyLogger()}
+	c := newTestClient(WithLogger(cl))
+	c.LogModel(context.Background(), "m-9", "chat", 3)
+	assert.Contains(t, cl.captured, "[LLMX] chat")
+	assert.Contains(t, cl.captured, "m-9")
+	assert.Contains(t, cl.captured, "3")
+}
+
+func TestLoggerLinkedToTransport(t *testing.T) {
+	// WithLogger 联动：Base 与 TC 共享同一 logger 实例
+	cl := &captureLogger{EmptyLogger: logger.NewEmptyLogger()}
+	c := newTestClient(WithLogger(cl))
+	assert.Same(t, cl, c.Logger)
+	assert.Same(t, cl, c.TC.Logger)
+
+	// WithTimeout/WithHTTPClient 替换 TC 后 logger 不丢
+	c2 := newTestClient(WithLogger(cl), WithTimeout(7*time.Second), WithHTTPClient(&http.Client{}))
+	assert.Same(t, cl, c2.TC.Logger, "TC 替换后 logger 应保持联动")
+
+	// NewBase 默认装配：TC 与 Base 同源
+	b := NewBase("/p", "k", "m")
+	assert.Same(t, b.Logger, b.TC.Logger)
 }

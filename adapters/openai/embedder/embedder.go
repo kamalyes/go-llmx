@@ -2,7 +2,7 @@
  * @Author: kamalyes 501893067@qq.com
  * @Date: 2025-11-07 22:37:00
  * @LastEditors: kamalyes 501893067@qq.com
- * @LastEditTime: 2025-11-07 22:37:00
+ * @LastEditTime: 2026-05-25 21:16:00
  * @FilePath: \go-llmx\adapters\openai\embedder\embedder.go
  * @Description: OpenAI 兼容嵌入适配器 —— /embeddings 协议，覆盖 OpenAI 及
  * 兼容网关. 独立子包实现 llmx.Embedder（与对话客户端独立配置端点/模型）
@@ -22,8 +22,8 @@ import (
 // Client OpenAI 兼容嵌入客户端.
 // [EN] OpenAI-compatible embedding client.
 type Client struct {
-	// adapter.Base 客户端基座（端点/模型/密钥/传输 + 访问器）.
-	// [EN] Client base (endpoint/model/key/transport + accessors).
+	// adapter.Base 客户端基座（端点/模型/密钥/传输/日志 + 访问器）.
+	// [EN] Client base (endpoint/model/key/transport/logger + accessors).
 	adapter.Base
 }
 
@@ -58,6 +58,9 @@ var (
 	// [EN] Inject a custom http.Client.
 	WithHTTPClient = adapter.WithHTTPClient
 
+	// WithLogger 注入日志（缺省静默）.
+	// [EN] Inject a logger.
+	WithLogger = adapter.WithLogger
 )
 
 // New 构造客户端（opts 可覆盖端点/模型/超时；默认 text-embedding-3-small）.
@@ -72,6 +75,7 @@ func New(apiKey string, opts ...Option) *Client {
 // EmbedDocuments 实现 llmx.Embedder（批量嵌入，索引阶段）.
 // [EN] Implement llmx.Embedder (batch embedding, indexing phase).
 func (c *Client) EmbedDocuments(ctx context.Context, texts []string) ([][]float64, error) {
+	c.LogModel(ctx, c.Model, "embed", len(texts))
 
 	var wr wireResponse
 	if err := c.TC.PostJSON(ctx, c.GetEndpoint(), &wireRequest{
