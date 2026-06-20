@@ -2,7 +2,7 @@
  * @Author: kamalyes 501893067@qq.com
  * @Date: 2025-07-15 21:35:00
  * @LastEditors: kamalyes 501893067@qq.com
- * @LastEditTime: 2025-07-15 21:35:00
+ * @LastEditTime: 2026-06-20 21:29:17
  * @FilePath: \go-llmx\options.go
  * @Description: 函数式调用选项 —— Option 作用于单次 GenerateContent 调用.
  * 模型/端点等长生命周期配置由适配器构造函数承载，此处只管请求级参数
@@ -57,6 +57,10 @@ type Options struct {
 	// MaxToolIterations 工具调用循环上限（RunToolLoop 消费；适配器不消费此字段；<=0 走默认）.
 	// [EN] Tool loop limit (consumed by RunToolLoop; adapters ignore it).
 	MaxToolIterations int
+
+	// Thinking 思考配置（nil = 不启用；支持思考的适配器消费，见 thinking.go）.
+	// [EN] Thinking configuration (nil = disabled; consumed by reasoning-capable adapters).
+	Thinking *Thinking
 }
 
 // ToolDef 工具定义（暴露给模型的函数签名）.
