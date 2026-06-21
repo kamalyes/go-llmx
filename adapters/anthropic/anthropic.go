@@ -2,7 +2,7 @@
  * @Author: kamalyes 501893067@qq.com
  * @Date: 2025-11-21 20:37:00
  * @LastEditors: kamalyes 501893067@qq.com
- * @LastEditTime: 2026-05-25 21:23:00
+ * @LastEditTime: 2026-06-21 10:11:36
  * @FilePath: \go-llmx\adapters\anthropic\anthropic.go
  * @Description: Anthropic Claude 对话适配器 —— 编排 transport 传输与 wire 编解码.
  * 协议差异（x-api-key 头 / anthropic-version / max_tokens 必填）收口在本文件；
@@ -168,7 +168,28 @@ func (c *Client) buildRequest(o *llmx.Options, messages []llmx.Message, stream b
 			InputSchema: t.Parameters,
 		})
 	}
+	req.Thinking = encodeThinking(o, req.MaxTokens)
 	return req
+}
+
+// encodeThinking 思考配置 → wire 参数（budget 显式值优先，否则按档位推导；协议要求预算 <= maxTokens）.
+// [EN] Encode the thinking config (explicit budget first, then level-derived).
+func encodeThinking(o *llmx.Options, maxTokens int) *wireThinking {
+	if o.Thinking == nil || o.Thinking.Mode == llmx.ThinkingNone {
+		return nil
+	}
+	budget := o.Thinking.BudgetTokens
+	if budget <= 0 {
+		budget = llmx.CalculateThinkingBudget(o.Thinking.Mode, o.MaxTokens)
+	}
+	if budget < llmx.MinThinkingBudget {
+		budget = llmx.MinThinkingBudget
+	}
+	// 协议约束：思考预算不得超过 max_tokens，超出时钳制
+	if maxTokens > 0 && budget > maxTokens {
+		budget = maxTokens
+	}
+	return &wireThinking{Type: thinkingEnabled, BudgetTokens: budget}
 }
 
 // headers 认证与协议头（Anthropic 专用：x-api-key + anthropic-version）.

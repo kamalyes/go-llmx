@@ -2,7 +2,7 @@
  * @Author: kamalyes 501893067@qq.com
  * @Date: 2025-11-21 21:18:00
  * @LastEditors: kamalyes 501893067@qq.com
- * @LastEditTime: 2025-11-21 21:18:00
+ * @LastEditTime: 2026-06-21 10:11:36
  * @FilePath: \go-llmx\adapters\anthropic\wire.go
  * @Description: Anthropic Messages 协议编解码 —— wire 请求/响应结构与 llmx 类型互转.
  * 协议差异收口：system 走顶层参数、tool_result 走 user 消息块、max_tokens 必填
@@ -62,6 +62,22 @@ type wireRequest struct {
 	// Tools 工具定义.
 	// [EN] Tool definitions.
 	Tools []wireTool `json:"tools,omitempty"`
+
+	// Thinking 思考配置（extended thinking；nil 不携带）.
+	// [EN] Thinking configuration (extended thinking; nil omits it).
+	Thinking *wireThinking `json:"thinking,omitempty"`
+}
+
+// wireThinking 思考请求参数（Anthropic extended thinking 协议）.
+// [EN] Thinking request parameter (Anthropic extended thinking protocol).
+type wireThinking struct {
+	// Type 固定 enabled.
+	// [EN] Fixed to "enabled".
+	Type string `json:"type"`
+
+	// BudgetTokens 思考 token 预算（协议要求 >= 1024）.
+	// [EN] Thinking token budget (protocol requires >= 1024).
+	BudgetTokens int `json:"budget_tokens"`
 }
 
 // wireMessage 协议消息.

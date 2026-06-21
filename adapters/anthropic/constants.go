@@ -2,7 +2,7 @@
  * @Author: kamalyes 501893067@qq.com
  * @Date: 2025-11-21 20:31:00
  * @LastEditors: kamalyes 501893067@qq.com
- * @LastEditTime: 2025-11-21 20:31:00
+ * @LastEditTime: 2026-06-21 10:11:36
  * @FilePath: \go-llmx\adapters\anthropic\constants.go
  * @Description: Anthropic 适配器常量 —— 默认端点/模型/wire 协议字面量/SSE 事件名
  *
@@ -139,6 +139,10 @@ const (
 // wire 编解码字面量（encode/decode 内的固定取值）.
 // [EN] Codec literals (fixed values inside encode/decode).
 const (
+	// thinkingEnabled 思考参数类型取值（wireThinking.Type 固定值）.
+	// [EN] Thinking parameter type literal.
+	thinkingEnabled = "enabled"
+
 	// defaultImageMIME 内联图片缺省 MIME 类型.
 	// [EN] Default MIME type for inline images.
 	defaultImageMIME = "image/png"
