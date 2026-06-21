@@ -2,7 +2,7 @@
  * @Author: kamalyes 501893067@qq.com
  * @Date: 2025-09-01 20:28:00
  * @LastEditors: kamalyes 501893067@qq.com
- * @LastEditTime: 2026-05-25 20:58:00
+ * @LastEditTime: 2026-06-21 20:58:02
  * @FilePath: \go-llmx\adapters\openai\openai.go
  * @Description: OpenAI 兼容对话适配器 —— 编排 transport 传输与 wire 编解码.
  * 覆盖 OpenAI / DeepSeek / OpenRouter / Groq / vLLM 等兼容端点（WithBaseURL 切换）；
@@ -190,7 +190,23 @@ func (c *Client) buildRequest(o *llmx.Options, messages []llmx.Message, stream b
 			},
 		})
 	}
+	req.ReasoningEffort = encodeReasoningEffort(o)
 	return req
+}
+
+// encodeReasoningEffort 思考档位 → OpenAI reasoning_effort 参数（o 系模型消费；
+// 仅 low/medium/high 有协议意义，none/auto 不携带由模型默认行为决定）.
+// [EN] Map the thinking level to the OpenAI reasoning_effort parameter.
+func encodeReasoningEffort(o *llmx.Options) string {
+	if o.Thinking == nil {
+		return ""
+	}
+	switch o.Thinking.Mode {
+	case llmx.ThinkingLow, llmx.ThinkingMedium, llmx.ThinkingHigh:
+		return string(o.Thinking.Mode)
+	default:
+		return ""
+	}
 }
 
 // headers 认证与协议头（Bearer 形态）.

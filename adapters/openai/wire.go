@@ -2,7 +2,7 @@
  * @Author: kamalyes 501893067@qq.com
  * @Date: 2025-09-01 21:01:00
  * @LastEditors: kamalyes 501893067@qq.com
- * @LastEditTime: 2025-09-01 21:01:00
+ * @LastEditTime: 2026-06-21 20:58:02
  * @FilePath: \go-llmx\adapters\openai\wire.go
  * @Description: OpenAI 兼容协议编解码 —— wire 请求/响应结构与 llmx 类型互转.
  * 仅本包可见：适配器主体只编排调用，协议细节全部收口在此
@@ -73,6 +73,10 @@ type wireRequest struct {
 	// User 终端用户标识（风控/计费）.
 	// [EN] End-user identifier (risk control / billing).
 	User string `json:"user,omitempty"`
+
+	// ReasoningEffort 思考强度（o 系模型；空串不携带）.
+	// [EN] Reasoning effort (o-series models; empty omits it).
+	ReasoningEffort string `json:"reasoning_effort,omitempty"`
 }
 
 // wireMessage 协议消息.
