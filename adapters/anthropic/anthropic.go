@@ -2,7 +2,7 @@
  * @Author: kamalyes 501893067@qq.com
  * @Date: 2025-11-21 20:37:00
  * @LastEditors: kamalyes 501893067@qq.com
- * @LastEditTime: 2026-06-21 10:11:36
+ * @LastEditTime: 2026-06-27 10:18:33
  * @FilePath: \go-llmx\adapters\anthropic\anthropic.go
  * @Description: Anthropic Claude 对话适配器 —— 编排 transport 传输与 wire 编解码.
  * 协议差异（x-api-key 头 / anthropic-version / max_tokens 必填）收口在本文件；
@@ -15,6 +15,7 @@ package lcanthropic
 
 import (
 	"context"
+	"fmt"
 	"io"
 
 	llmx "github.com/kamalyes/go-llmx"
@@ -78,6 +79,9 @@ func New(apiKey string, opts ...Option) *Client {
 // GenerateContent 实现 llmx.Model（非流式）.
 // [EN] Implement llmx.Model (non-streaming).
 func (c *Client) GenerateContent(ctx context.Context, messages []llmx.Message, opts ...llmx.Option) (*llmx.Response, error) {
+	if err := validateMessages(messages); err != nil {
+		return nil, err
+	}
 	o := llmx.Apply(opts...)
 	c.LogModel(ctx, c.ResolveModel(o), "chat", len(messages))
 
@@ -112,6 +116,9 @@ func (c *Client) GenerateContent(ctx context.Context, messages []llmx.Message, o
 //
 // stream 为 nil 时退化为非流式；handler 返回 ErrStopStream 提前终止
 func (c *Client) StreamGenerateContent(ctx context.Context, messages []llmx.Message, stream llmx.StreamHandler, opts ...llmx.Option) (*llmx.Response, error) {
+	if err := validateMessages(messages); err != nil {
+		return nil, err
+	}
 	if stream == nil {
 		return c.GenerateContent(ctx, messages, opts...)
 	}
@@ -190,6 +197,15 @@ func encodeThinking(o *llmx.Options, maxTokens int) *wireThinking {
 		budget = maxTokens
 	}
 	return &wireThinking{Type: thinkingEnabled, BudgetTokens: budget}
+}
+
+// validateMessages 空消息快速失败（发起网络请求前拦截）.
+// [EN] Fast-fail on empty messages (before any network call).
+func validateMessages(messages []llmx.Message) error {
+	if len(messages) == 0 {
+		return fmt.Errorf("%w: messages must not be empty", llmx.ErrInvalidRequest)
+	}
+	return nil
 }
 
 // headers 认证与协议头（Anthropic 专用：x-api-key + anthropic-version）.

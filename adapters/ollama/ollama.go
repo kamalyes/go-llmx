@@ -2,7 +2,7 @@
  * @Author: kamalyes 501893067@qq.com
  * @Date: 2025-12-09 20:35:00
  * @LastEditors: kamalyes 501893067@qq.com
- * @LastEditTime: 2026-05-25 21:38:00
+ * @LastEditTime: 2026-06-27 10:18:33
  * @FilePath: \go-llmx\adapters\ollama\ollama.go
  * @Description: Ollama 本地推理对话适配器 —— 编排 transport 传输与 wire 编解码.
  * NDJSON 流式（transport.DoNDJSON）；客户端基座与错误映射骨架见核心库 adapter 包；
@@ -15,6 +15,7 @@ package lcollama
 
 import (
 	"context"
+	"fmt"
 
 	llmx "github.com/kamalyes/go-llmx"
 	"github.com/kamalyes/go-llmx/adapter"
@@ -77,6 +78,9 @@ func New(apiKey string, opts ...Option) *Client {
 // GenerateContent 实现 llmx.Model（非流式）.
 // [EN] Implement llmx.Model (non-streaming).
 func (c *Client) GenerateContent(ctx context.Context, messages []llmx.Message, opts ...llmx.Option) (*llmx.Response, error) {
+	if err := validateMessages(messages); err != nil {
+		return nil, err
+	}
 	o := llmx.Apply(opts...)
 	c.LogModel(ctx, c.ResolveModel(o), "chat", len(messages))
 
@@ -106,6 +110,9 @@ func (c *Client) GenerateContent(ctx context.Context, messages []llmx.Message, o
 //
 // stream 为 nil 时退化为非流式；handler 返回 ErrStopStream 提前终止
 func (c *Client) StreamGenerateContent(ctx context.Context, messages []llmx.Message, stream llmx.StreamHandler, opts ...llmx.Option) (*llmx.Response, error) {
+	if err := validateMessages(messages); err != nil {
+		return nil, err
+	}
 	if stream == nil {
 		return c.GenerateContent(ctx, messages, opts...)
 	}
@@ -169,6 +176,15 @@ func (c *Client) buildRequest(o *llmx.Options, messages []llmx.Message, stream b
 		})
 	}
 	return req
+}
+
+// validateMessages 空消息快速失败（发起网络请求前拦截）.
+// [EN] Fast-fail on empty messages (before any network call).
+func validateMessages(messages []llmx.Message) error {
+	if len(messages) == 0 {
+		return fmt.Errorf("%w: messages must not be empty", llmx.ErrInvalidRequest)
+	}
+	return nil
 }
 
 // headers 认证头（本地部署可空，代理网关 Bearer 形态）.
