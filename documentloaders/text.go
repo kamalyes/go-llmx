@@ -2,7 +2,7 @@
  * @Author: kamalyes 501893067@qq.com
  * @Date: 2026-06-29 20:06:53
  * @LastEditors: kamalyes 501893067@qq.com
- * @LastEditTime: 2026-06-29 20:13:55
+ * @LastEditTime: 2026-06-30 22:38:51
  * @FilePath: \go-llmx\documentloaders\text.go
  * @Description: 文本加载器 —— string / io.Reader → 单文档.
  *
@@ -12,6 +12,7 @@
 package documentloaders
 
 import (
+	"bytes"
 	"context"
 	"io"
 
@@ -38,13 +39,14 @@ func NewText(content string) *Text {
 }
 
 // NewTextReader 从读取器构造（构造期全量读入，Load 时无 IO）.
-// [EN] Build from a reader (fully read at construction).
+// bytes.Buffer 承接后零拷贝转 string，避免 ReadAll 后的二次全量拷贝.
+// [EN] Build from a reader (fully read at construction; Buffer.String transfers without an extra copy).
 func NewTextReader(r io.Reader) (*Text, error) {
-	data, err := io.ReadAll(r)
-	if err != nil {
+	var buf bytes.Buffer
+	if _, err := io.Copy(&buf, r); err != nil {
 		return nil, err
 	}
-	return &Text{content: string(data)}, nil
+	return &Text{content: buf.String()}, nil
 }
 
 // WithMetadata 附加元数据（源标识等）.

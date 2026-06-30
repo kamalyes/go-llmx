@@ -2,7 +2,7 @@
  * @Author: kamalyes 501893067@qq.com
  * @Date: 2026-06-29 21:20:31
  * @LastEditors: kamalyes 501893067@qq.com
- * @LastEditTime: 2026-06-29 21:27:01
+ * @LastEditTime: 2026-06-30 22:38:51
  * @FilePath: \go-llmx\documentloaders\csv.go
  * @Description: CSV 加载器 —— 每行一文档，表头字段 → 元数据（标准库零依赖）.
  * 行内容序列化为 "列名: 值" 行集合，保留检索友好形态
@@ -17,6 +17,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	llmx "github.com/kamalyes/go-llmx"
@@ -59,20 +60,28 @@ func (l *CSV) Load(ctx context.Context) ([]llmx.Document, error) {
 		return nil, nil
 	}
 	header := rows[0]
-	var docs []llmx.Document
+	docs := make([]llmx.Document, 0, len(rows)-1)
 	for _, row := range rows[1:] {
-		meta := map[string]any{}
+		meta := make(map[string]any, len(row)+1)
 		if l.source != "" {
 			meta["source"] = l.source
 		}
 		var b strings.Builder
+		b.Grow(64 * len(row))
 		for i, cell := range row {
-			key := fmt.Sprintf("col_%d", i)
-			if i < len(header) && header[i] != "" {
+			var key string
+			if i < len(header) {
 				key = header[i]
 			}
+			if key == "" {
+				key = "col_" + strconv.Itoa(i)
+			}
 			meta[key] = cell
-			fmt.Fprintf(&b, "%s: %s\n", key, cell)
+			// 手写拼接替代 Fprintf：省反射格式化与中间分配
+			b.WriteString(key)
+			b.WriteString(": ")
+			b.WriteString(cell)
+			b.WriteByte('\n')
 		}
 		docs = append(docs, llmx.Document{
 			PageContent: strings.TrimRight(b.String(), "\n"),

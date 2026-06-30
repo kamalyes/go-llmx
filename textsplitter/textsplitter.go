@@ -2,7 +2,7 @@
  * @Author: kamalyes 501893067@qq.com
  * @Date: 2025-11-07 20:26:00
  * @LastEditors: kamalyes 501893067@qq.com
- * @LastEditTime: 2025-11-07 20:26:00
+ * @LastEditTime: 2026-06-30 22:38:51
  * @FilePath: \go-llmx\textsplitter\textsplitter.go
  * @Description: 递归分隔符分块器 —— RAG 索引前置处理.
  * 分隔符按优先级递归降级（\n\n → \n → 句读 → 空格 → 字符硬切），
@@ -127,12 +127,7 @@ func (s *RecursiveSplitter) splitRecursive(text string, level int) []string {
 	}
 
 	var out []string
-	raw := strings.Split(text, sep)
-	for i, piece := range raw {
-		if i < len(raw)-1 {
-			// 分隔符回填至本片段尾部，保持原文无损
-			piece += sep
-		}
+	for _, piece := range splitWithSep(text, sep) {
 		if piece == "" {
 			continue
 		}
@@ -145,50 +140,95 @@ func (s *RecursiveSplitter) splitRecursive(text string, level int) []string {
 	return out
 }
 
+// splitWithSep 按分隔符切片，分隔符保留在片段尾部（原文视图，零中间分配）.
+// [EN] Split with the separator kept at each piece tail (views over the original, zero intermediate allocs).
+func splitWithSep(text, sep string) []string {
+	var out []string
+	start := 0
+	for start <= len(text) {
+		idx := strings.Index(text[start:], sep)
+		if idx < 0 {
+			if start < len(text) {
+				out = append(out, text[start:])
+			}
+			return out
+		}
+		end := start + idx + len(sep)
+		out = append(out, text[start:end])
+		start = end
+	}
+	return out
+}
+
 // merge 贪心合并相邻片段至块上限，块间以 overlap 尾部衔接.
+// 片段以 slice 收集、出块时一次性 Join，避免逐片段字符串拼接的 O(n²) 开销.
 // [EN] Greedily merge pieces up to the chunk limit, chaining chunks by overlap tails.
+// Pieces are collected in a slice and joined once per chunk, avoiding O(n²) concatenation.
 func (s *RecursiveSplitter) merge(pieces []string) []string {
 	var chunks []string
-	cur := ""
+	var cur []string
+	curLen := 0
 	for _, p := range pieces {
-		if cur != "" && utf8.RuneCountInString(cur)+utf8.RuneCountInString(p) > s.chunkSize {
-			chunks = append(chunks, cur)
-			cur = runeTail(cur, s.chunkOverlap)
+		pl := utf8.RuneCountInString(p)
+		if len(cur) > 0 && curLen+pl > s.chunkSize {
+			chunks = append(chunks, strings.Join(cur, ""))
+			// 上一块尾部 overlap 作为新块开头，保证跨块语义连续
+			tail := runeTail(chunks[len(chunks)-1], s.chunkOverlap)
+			cur, curLen = append(cur[:0], tail), utf8.RuneCountInString(tail)
 		}
-		cur += p
+		cur = append(cur, p)
+		curLen += pl
 	}
-	if cur != "" {
-		chunks = append(chunks, cur)
+	if len(cur) > 0 {
+		chunks = append(chunks, strings.Join(cur, ""))
 	}
 	return chunks
 }
 
 // hardCut 按块大小字符级硬切.
+// 按 UTF-8 引导字节就地扫描切块，无 []rune 全量转换与二次编码.
 // [EN] Hard-cut text at the chunk size.
+// Scans lead bytes in place; no []rune conversion or re-encoding.
 func hardCut(text string, size int) []string {
-	runes := []rune(text)
-	out := make([]string, 0, (len(runes)+size-1)/size)
-	for i := 0; i < len(runes); i += size {
-		end := i + size
-		if end > len(runes) {
-			end = len(runes)
+	var out []string
+	start, count := 0, 0
+	for i := 0; i < len(text); {
+		_, sz := utf8.DecodeRuneInString(text[i:])
+		if sz == 0 {
+			sz = 1
 		}
-		out = append(out, string(runes[i:end]))
+		i += sz
+		count++
+		if count == size {
+			out = append(out, text[start:i])
+			start, count = i, 0
+		}
+	}
+	if start < len(text) {
+		out = append(out, text[start:])
 	}
 	return out
 }
 
 // runeTail 取字符串尾部 n 个 runes.
+// 自尾部按 UTF-8 续字节（10xxxxxx）回扫字符边界，复杂度与 n 而非整串长度成正比.
 // [EN] Take the trailing n runes of a string.
+// Scans backwards over UTF-8 continuation bytes, cost proportional to n rather than the whole string.
 func runeTail(s string, n int) string {
 	if n <= 0 {
 		return ""
 	}
-	r := []rune(s)
-	if n >= len(r) {
-		return s
+	end := len(s)
+	for end > 0 && n > 0 {
+		// 回退一个完整 rune：跳过全部续字节（10xxxxxx）至引导字节
+		start := end - 1
+		for start > 0 && s[start]&0xC0 == 0x80 {
+			start--
+		}
+		end = start
+		n--
 	}
-	return string(r[len(r)-n:])
+	return s[end:]
 }
 
 // SplitDocuments 分块并封装为 Document（元数据透传）.

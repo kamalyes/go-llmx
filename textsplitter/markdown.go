@@ -2,7 +2,7 @@
  * @Author: kamalyes 501893067@qq.com
  * @Date: 2026-06-30 20:58:33
  * @LastEditors: kamalyes 501893067@qq.com
- * @LastEditTime: 2026-06-30 21:06:23
+ * @LastEditTime: 2026-06-30 22:38:51
  * @FilePath: \go-llmx\textsplitter\markdown.go
  * @Description: Markdown 感知分块器 —— 标题边界优先、代码块不切断，
  * 超长节内部递归退化到 RecursiveSplitter（零依赖自实现，不引第三方解析器）
@@ -14,6 +14,7 @@ package textsplitter
 
 import (
 	"strings"
+	"unicode/utf8"
 )
 
 // 代码围栏标记.
@@ -44,7 +45,7 @@ func (m *Markdown) Split(text string) []string {
 
 	var chunks []string
 	for _, sec := range sections {
-		if m.inner.chunkSize > 0 && len([]rune(sec)) <= m.inner.chunkSize {
+		if m.inner.chunkSize > 0 && utf8.RuneCountInString(sec) <= m.inner.chunkSize {
 			chunks = append(chunks, sec)
 			continue
 		}
@@ -63,37 +64,44 @@ func (m *Markdown) Split(text string) []string {
 }
 
 // splitSections 按标题与代码块边界切节（保持节内原文，含边界行）.
+// 行扫描与节切片均为原串视图，零中间分配.
 // [EN] Split into sections at heading and code-fence boundaries.
+// Both line scan and section slices are views over the original string (zero intermediate allocs).
 func splitSections(text string) []string {
-	lines := strings.Split(text, "\n")
 	var sections []string
-	var current []string
+	start := 0   // 当前节起始偏移
+	lastEnd := 0 // 已消费最后一个非换行偏移
+	hasContent := false
 	inCode := false
 
-	flush := func() {
-		if len(current) > 0 {
-			sections = append(sections, strings.Join(current, "\n"))
-			current = nil
+	for pos := 0; pos < len(text); {
+		lineStart := pos
+		nl := strings.IndexByte(text[pos:], '\n')
+		var lineEnd int
+		if nl < 0 {
+			lineEnd = len(text)
+			pos = len(text)
+		} else {
+			lineEnd = pos + nl
+			pos = lineEnd + 1
 		}
-	}
 
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		// 代码围栏状态跟踪（围栏内不切）
-		if strings.HasPrefix(trimmed, codeFence) {
+		trimmed := strings.TrimSpace(text[lineStart:lineEnd])
+		switch {
+		case strings.HasPrefix(trimmed, codeFence):
+			// 代码围栏状态跟踪（围栏内不切）
 			inCode = !inCode
-			current = append(current, line)
-			continue
+		case !inCode && isHeading(trimmed) && hasContent:
+			// 标题行（# 开头，围栏外）为节边界：先落上一节，标题归新节
+			sections = append(sections, text[start:lastEnd])
+			start = lineStart
 		}
-		// 标题行（# 开头，围栏外）为节边界
-		if !inCode && isHeading(trimmed) {
-			flush()
-			current = append(current, line)
-			continue
-		}
-		current = append(current, line)
+		hasContent = true
+		lastEnd = lineEnd
 	}
-	flush()
+	if hasContent {
+		sections = append(sections, text[start:lastEnd])
+	}
 	return sections
 }
 
