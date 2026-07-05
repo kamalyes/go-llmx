@@ -1,8 +1,8 @@
 /*
  * @Author: kamalyes 501893067@qq.com
  * @Date: 2026-07-03 21:07:52
- * @LastEditors: kamalyes 501893067@qq.com
- * @LastEditTime: 2026-07-03 21:26:38
+ * @LastEditors: wmxuan 836551135@qq.com
+ * @LastEditTime: 2026-07-05 20:53:26
  * @FilePath: \go-llmx\agent\agent.go
  * @Description: 自主体 —— 原生工具调用 ReAct 循环：模型 ↔ 工具多轮对话直至产出最终回答，
  * 可选系统提示 / 会话记忆 / 流式输出，替代 langchaingo agents 包的
@@ -221,13 +221,26 @@ func (a *Agent) generate(ctx context.Context, messages []llmx.Message, opts []ll
 
 // executeCalls 执行一轮全部工具调用并返回观测消息（按调用序回填）.
 // [EN] Execute all tool calls of one round, returning observation messages in order.
+//
+// 多调用并行执行（各 goroutine 写预分配 slice 独立下标，无锁无竞态）；
+// 单调用走免 goroutine 快路径，零并发开销
 func (a *Agent) executeCalls(ctx context.Context, calls []llmx.ToolCallPart, res *Result) []llmx.Message {
 	msgs := make([]llmx.Message, len(calls))
-	for i, call := range calls {
-		msg, step := a.executeCall(ctx, call)
-		msgs[i] = msg
-		res.Steps = append(res.Steps, step)
+	round := make([]Step, len(calls))
+	if len(calls) == 1 {
+		msgs[0], round[0] = a.executeCall(ctx, calls[0])
+	} else {
+		var wg sync.WaitGroup
+		for i := range calls {
+			wg.Add(1)
+			go func(i int) {
+				defer wg.Done()
+				msgs[i], round[i] = a.executeCall(ctx, calls[i])
+			}(i)
+		}
+		wg.Wait()
 	}
+	res.Steps = append(res.Steps, round...)
 	return msgs
 }
 
