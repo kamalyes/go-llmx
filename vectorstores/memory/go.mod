@@ -1,4 +1,4 @@
-module github.com/kamalyes/go-llmx/adapters/vectorstores/memory
+module github.com/kamalyes/go-llmx/vectorstores/memory
 
 go 1.24.0
 
@@ -13,4 +13,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/kamalyes/go-llmx => ../../..
+replace github.com/kamalyes/go-llmx => ../..

@@ -2,8 +2,8 @@
  * @Author: kamalyes 501893067@qq.com
  * @Date: 2025-11-07 21:37:00
  * @LastEditors: kamalyes 501893067@qq.com
- * @LastEditTime: 2025-11-07 21:37:00
- * @FilePath: \go-llmx\adapters\vectorstores\memory\constants.go
+ * @LastEditTime: 2026-07-08 20:57:33
+ * @FilePath: \go-llmx\vectorstores\memory\constants.go
  * @Description: 内存向量库常量 —— 检索与存储行为默认值
  *
  * Copyright (c) 2025 by kamalyes, All Rights Reserved.

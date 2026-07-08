@@ -2,8 +2,8 @@
  * @Author: kamalyes 501893067@qq.com
  * @Date: 2025-11-07 21:58:00
  * @LastEditors: kamalyes 501893067@qq.com
- * @LastEditTime: 2025-11-07 21:58:00
- * @FilePath: \go-llmx\adapters\vectorstores\memory\memory_test.go
+ * @LastEditTime: 2026-07-08 20:57:33
+ * @FilePath: \go-llmx\vectorstores\memory\memory_test.go
  * @Description: 内存向量库存储与检索测试 —— 写入校验/Top-K 排序/
  * 元数据过滤/并发安全. 相似度数学见 math_test.go
  *

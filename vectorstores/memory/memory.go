@@ -2,8 +2,8 @@
  * @Author: kamalyes 501893067@qq.com
  * @Date: 2025-11-07 21:29:00
  * @LastEditors: kamalyes 501893067@qq.com
- * @LastEditTime: 2025-11-25 21:33:00
- * @FilePath: \go-llmx\adapters\vectorstores\memory\memory.go
+ * @LastEditTime: 2026-07-08 20:57:33
+ * @FilePath: \go-llmx\vectorstores\memory\memory.go
  * @Description: 内存向量库 —— 进程内余弦相似度检索（单测/原型/小规模数据）.
  * 零依赖并发安全实现；相似度数学见 math.go，生产规模见 redis/pgvector 适配器
  *
