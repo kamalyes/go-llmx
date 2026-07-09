@@ -1,9 +1,9 @@
 /*
  * @Author: kamalyes 501893067@qq.com
  * @Date: 2025-12-09 22:23:00
- * @LastEditors: kamalyes 501893067@qq.com
- * @LastEditTime: 2025-12-09 22:23:00
- * @FilePath: \go-llmx\adapters\ollama\embedder\errors.go
+ * @LastEditors: wmxuan 836551135@qq.com
+ * @LastEditTime: 2026-07-09 21:38:16
+ * @FilePath: \go-llmx\embeddings\ollama\errors.go
  * @Description: Ollama 嵌入适配器错误差异 —— wire 错误体解析 + Classifier 实现.
  * 公共映射骨架（网络/状态分类）见核心库 adapter 包
  *

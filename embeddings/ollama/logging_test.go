@@ -1,16 +1,16 @@
 /*
  * @Author: kamalyes 501893067@qq.com
- * @Date: 2026-05-25 20:38:19
- * @LastEditors: kamalyes 501893067@qq.com
- * @LastEditTime: 2026-05-25 20:38:19
- * @FilePath: \go-llmx\adapters\openai\embedder\logging_test.go
- * @Description: ctx + logger 端到端测试 —— embed 打点（批量 count=N / 检索 count=1）、
- * 业务 ctx 追踪值贯通、取消语义跨层保留. mock 基建见 embedder_test.go
+ * @Date: 2026-05-25 21:16:58
+ * @LastEditors: wmxuan 836551135@qq.com
+ * @LastEditTime: 2026-07-09 21:38:16
+ * @FilePath: \go-llmx\embeddings\ollama\logging_test.go
+ * @Description: ctx + logger 端到端测试 —— embed 打点（批量 count=N / 检索 count=1 的
+ * input 两形态收口）、业务 ctx 追踪值贯通、取消语义跨层保留. mock 基建见 embedder_test.go
  *
  * Copyright (c) 2026 by kamalyes, All Rights Reserved.
  */
 
-package lcembed
+package lcollamaembed
 
 import (
 	"context"
@@ -84,16 +84,16 @@ func kvVal(kv []interface{}, key string) (interface{}, bool) {
 	return nil, false
 }
 
-func TestE2E_EmbedLogging_CountsByPhase(t *testing.T) {
+func TestE2E_EmbedLogging_InputShapes(t *testing.T) {
 	m := newMockServer(t, func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, `{"data":[{"index":0,"embedding":[0.1,0.2]},{"index":1,"embedding":[0.3,0.4]}],"usage":{"prompt_tokens":2,"total_tokens":2}}`)
+		fmt.Fprint(w, `{"embeddings":[[0.1,0.2],[0.3,0.4]]}`)
 	})
 
 	cl := newE2ELogger()
-	c := New("k", WithBaseURL(m.srv.URL), WithModel("text-embedding-3-small"), WithLogger(cl))
-	ctx := context.WithValue(context.Background(), ctxKey{}, "trace-embed")
+	c := New("k", WithBaseURL(m.srv.URL), WithModel("nomic-embed-text"), WithLogger(cl))
+	ctx := context.WithValue(context.Background(), ctxKey{}, "trace-ollama-embed")
 
-	// 索引阶段：批量 count=2
+	// 索引阶段：[]string 批量 → count=2
 	vectors, err := c.EmbedDocuments(ctx, []string{"文档一", "文档二"})
 	require.NoError(t, err)
 	require.Len(t, vectors, 2)
@@ -106,7 +106,7 @@ func TestE2E_EmbedLogging_CountsByPhase(t *testing.T) {
 	assert.Equal(t, 2, v, "批量嵌入 count 应为文档数")
 	assert.Equal(t, "debug|[LLMX] http 请求完成", entries[1].level+"|"+entries[1].msg)
 
-	// 检索阶段：单条 count=1（EmbedQuery 复用批量出口，打点同源）
+	// 检索阶段：string 单条形态 → count=1（协议 input 两形态收口的打点分支）
 	cl2 := newE2ELogger()
 	c2 := New("k", WithBaseURL(m.srv.URL), WithLogger(cl2))
 	_, err = c2.EmbedQuery(ctx, "查询词")
@@ -117,11 +117,11 @@ func TestE2E_EmbedLogging_CountsByPhase(t *testing.T) {
 	assert.Equal(t, "[LLMX] embed", entries[0].msg)
 	v, ok = kvVal(entries[0].kv, "count")
 	require.True(t, ok)
-	assert.Equal(t, 1, v, "检索嵌入 count 应为 1")
+	assert.Equal(t, 1, v, "检索嵌入（string 形态）count 应为 1")
 
 	// 业务 ctx 贯通到每条打点
-	for _, e := range append(entries[:0:0], entries...) {
-		assert.Equal(t, "trace-embed", e.ctx.Value(ctxKey{}))
+	for _, e := range entries {
+		assert.Equal(t, "trace-ollama-embed", e.ctx.Value(ctxKey{}))
 	}
 }
 
@@ -136,7 +136,7 @@ func TestE2E_ContextCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, err := c.EmbedDocuments(ctx, []string{"q"})
+	_, err := c.EmbedQuery(ctx, "查询词")
 	require.Error(t, err)
 	assert.ErrorIs(t, err, context.Canceled, "ctx 取消语义应跨层保留")
 

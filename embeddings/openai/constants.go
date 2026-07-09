@@ -1,9 +1,9 @@
 /*
  * @Author: kamalyes 501893067@qq.com
  * @Date: 2025-11-07 22:11:00
- * @LastEditors: kamalyes 501893067@qq.com
- * @LastEditTime: 2025-11-07 22:11:00
- * @FilePath: \go-llmx\adapters\openai\embedder\constants.go
+ * @LastEditors: wmxuan 836551135@qq.com
+ * @LastEditTime: 2026-07-09 21:38:16
+ * @FilePath: \go-llmx\embeddings\openai\constants.go
  * @Description: OpenAI 兼容嵌入适配器常量 —— 默认端点/模型/协议路径
  *
  * Copyright (c) 2025 by kamalyes, All Rights Reserved.

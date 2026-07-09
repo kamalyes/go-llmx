@@ -1,9 +1,9 @@
 /*
  * @Author: kamalyes 501893067@qq.com
  * @Date: 2025-11-07 22:19:00
- * @LastEditors: kamalyes 501893067@qq.com
- * @LastEditTime: 2025-11-07 22:19:00
- * @FilePath: \go-llmx\adapters\openai\embedder\wire.go
+ * @LastEditors: wmxuan 836551135@qq.com
+ * @LastEditTime: 2026-07-09 21:38:16
+ * @FilePath: \go-llmx\embeddings\openai\wire.go
  * @Description: OpenAI 兼容嵌入协议编解码 —— wire 请求/响应结构
  *
  * Copyright (c) 2025 by kamalyes, All Rights Reserved.

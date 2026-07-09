@@ -1,9 +1,9 @@
 /*
  * @Author: kamalyes 501893067@qq.com
  * @Date: 2025-12-09 22:15:00
- * @LastEditors: kamalyes 501893067@qq.com
- * @LastEditTime: 2025-12-09 22:15:00
- * @FilePath: \go-llmx\adapters\ollama\embedder\wire.go
+ * @LastEditors: wmxuan 836551135@qq.com
+ * @LastEditTime: 2026-07-09 21:38:16
+ * @FilePath: \go-llmx\embeddings\ollama\wire.go
  * @Description: Ollama 嵌入协议编解码 —— /api/embed 请求/响应结构.
  * input 兼容单字符串与数组两形态；embeddings 按输入顺序对应（无 index 字段）
  *

@@ -1,16 +1,16 @@
 /*
  * @Author: kamalyes 501893067@qq.com
- * @Date: 2025-11-07 22:50:00
- * @LastEditors: kamalyes 501893067@qq.com
- * @LastEditTime: 2025-11-07 22:50:00
- * @FilePath: \go-llmx\adapters\openai\embedder\embedder_test.go
- * @Description: OpenAI 兼容嵌入适配器测试 —— 批量/单条/index 归位/越界忽略/
+ * @Date: 2025-12-09 22:52:00
+ * @LastEditors: wmxuan 836551135@qq.com
+ * @LastEditTime: 2026-07-09 21:38:16
+ * @FilePath: \go-llmx\embeddings\ollama\embedder_test.go
+ * @Description: Ollama 嵌入适配器测试 —— input 两形态/index 顺序对应/
  * 错误映射/访问器. mock 基建独立维护（子包不依赖对话测试）
  *
  * Copyright (c) 2025 by kamalyes, All Rights Reserved.
  */
 
-package lcembed
+package lcollamaembed
 
 import (
 	"context"
@@ -39,8 +39,8 @@ type mockServer struct {
 	srv      *httptest.Server
 }
 
-// newMockServer 构造 /embeddings 模拟端点.
-// [EN] Build a mock /embeddings endpoint.
+// newMockServer 构造 /api/embed 模拟端点.
+// [EN] Build a mock /api/embed endpoint.
 func newMockServer(t *testing.T, handler http.HandlerFunc) *mockServer {
 	m := &mockServer{}
 	m.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -66,12 +66,12 @@ func (m *mockServer) body(key string) any {
 // embeddingsResponder 构造按输入数量回放的向量响应（每条 3 维递增向量）.
 // [EN] Build a vector response replayed by input count.
 func embeddingsResponder(n int) string {
-	out := `{"data": [`
+	out := `{"embeddings": [`
 	for i := 0; i < n; i++ {
 		if i > 0 {
 			out += ","
 		}
-		out += fmt.Sprintf(`{"index": %d, "embedding": [%d.0, 0.5, -0.25]}`, i, i)
+		out += fmt.Sprintf(`[%d.0, 0.5, -0.25]`, i)
 	}
 	return out + `]}`
 }
@@ -81,22 +81,21 @@ func embeddingsResponder(n int) string {
 // ============================================================================
 
 func TestEmbedDocuments(t *testing.T) {
-	texts := []string{"你好", "hello", "Bonjour"}
 	m := newMockServer(t, func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, embeddingsResponder(3))
 	})
 
 	c := New("k", WithBaseURL(m.srv.URL))
-	vectors, err := c.EmbedDocuments(context.Background(), texts)
+	vectors, err := c.EmbedDocuments(context.Background(), []string{"你好", "hello", "Bonjour"})
 	require.NoError(t, err)
 
 	require.Len(t, vectors, 3)
-	// 响应按 index 归位
+	// 响应按输入顺序直接对应（无 index 归位逻辑）
 	assert.Equal(t, []float64{0, 0.5, -0.25}, vectors[0])
 	assert.Equal(t, []float64{1, 0.5, -0.25}, vectors[1])
 	assert.Equal(t, []float64{2, 0.5, -0.25}, vectors[2])
 
-	// 请求体断言
+	// 请求体断言：批量以数组形态发送
 	assert.Equal(t, DefaultModel, m.body("model"))
 	input := m.body("input").([]any)
 	require.Len(t, input, 3)
@@ -105,7 +104,7 @@ func TestEmbedDocuments(t *testing.T) {
 
 func TestEmbedQuery(t *testing.T) {
 	m := newMockServer(t, func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, `{"data": [{"index": 0, "embedding": [0.1, 0.2]}]}`)
+		fmt.Fprint(w, `{"embeddings": [[0.1, 0.2]]}`)
 	})
 
 	c := New("k", WithBaseURL(m.srv.URL))
@@ -113,53 +112,39 @@ func TestEmbedQuery(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []float64{0.1, 0.2}, vec)
 
-	// 单条嵌入以单元素数组形态发送
-	input := m.body("input").([]any)
-	require.Len(t, input, 1)
-	assert.Equal(t, "查询", input[0])
-}
-
-func TestEmbed_IndexReordering(t *testing.T) {
-	// 响应乱序返回（index 2/0/1）→ 按 index 归位到输入顺序
-	m := newMockServer(t, func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, `{"data": [
-			{"index": 2, "embedding": [3.0]},
-			{"index": 0, "embedding": [1.0]},
-			{"index": 1, "embedding": [2.0]}
-		]}`)
-	})
-
-	c := New("k", WithBaseURL(m.srv.URL))
-	vectors, err := c.EmbedDocuments(context.Background(), []string{"a", "b", "c"})
-	require.NoError(t, err)
-	assert.Equal(t, []float64{1.0}, vectors[0])
-	assert.Equal(t, []float64{2.0}, vectors[1])
-	assert.Equal(t, []float64{3.0}, vectors[2])
-}
-
-func TestEmbed_IndexOutOfBoundsIgnored(t *testing.T) {
-	// 越界 index（网关异常载荷）→ 忽略不越位
-	m := newMockServer(t, func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, `{"data": [
-			{"index": 0, "embedding": [1.0]},
-			{"index": 9, "embedding": [9.9]}
-		]}`)
-	})
-
-	c := New("k", WithBaseURL(m.srv.URL))
-	vectors, err := c.EmbedDocuments(context.Background(), []string{"a"})
-	require.NoError(t, err)
-	require.Len(t, vectors, 1)
-	assert.Equal(t, []float64{1.0}, vectors[0])
+	// 单条以字符串形态发送（协议两形态，OpenAI 恒为数组）
+	input := m.body("input")
+	assert.Equal(t, "查询", input)
 }
 
 func TestEmbed_EmptyBatch(t *testing.T) {
+	// 空批量：input 为空数组，响应空集合 → 空结果不报错
 	m := newMockServer(t, func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, `{"data": []}`)
+		fmt.Fprint(w, `{"embeddings": []}`)
 	})
-
 	c := New("k", WithBaseURL(m.srv.URL))
 	vectors, err := c.EmbedDocuments(context.Background(), []string{})
+	require.NoError(t, err)
+	assert.Empty(t, vectors)
+}
+
+func TestEmbedQuery_EmptyResponse(t *testing.T) {
+	// 单条空响应 → ErrEmptyResponse 兜底
+	m := newMockServer(t, func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"embeddings": []}`)
+	})
+	c := New("k", WithBaseURL(m.srv.URL))
+	_, err := c.EmbedQuery(context.Background(), "q")
+	assert.ErrorIs(t, err, llmx.ErrEmptyResponse)
+}
+
+func TestEmbed_EmptyEmbeddingsField(t *testing.T) {
+	// 响应缺省 embeddings 字段 → nil 切片不报错
+	m := newMockServer(t, func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{}`)
+	})
+	c := New("k", WithBaseURL(m.srv.URL))
+	vectors, err := c.EmbedDocuments(context.Background(), []string{"a"})
 	require.NoError(t, err)
 	assert.Empty(t, vectors)
 }
@@ -173,24 +158,24 @@ func TestAccessorDefaults(t *testing.T) {
 	assert.Equal(t, DefaultBaseURL, c.GetBaseURL())
 	assert.Equal(t, DefaultModel, c.GetModel())
 	assert.Equal(t, "my-key", c.GetAPIKey())
-	assert.Equal(t, DefaultBaseURL+EmbeddingsPath, c.GetEndpoint())
+	assert.Equal(t, DefaultBaseURL+EmbedPath, c.GetEndpoint())
 }
 
 func TestAccessorRuntimeSwitch(t *testing.T) {
 	m := newMockServer(t, func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, `{"data": [{"index": 0, "embedding": [0.1]}]}`)
+		fmt.Fprint(w, `{"embeddings": [[0.1]]}`)
 	})
 
 	c := New("k")
 	c.SetBaseURL(m.srv.URL + "/")
 	assert.Equal(t, m.srv.URL, c.GetBaseURL())
-	assert.Equal(t, m.srv.URL+EmbeddingsPath, c.GetEndpoint())
+	assert.Equal(t, m.srv.URL+EmbedPath, c.GetEndpoint())
 
-	c.SetModel("text-embedding-3-large")
-	assert.Equal(t, "text-embedding-3-large", c.GetModel())
+	c.SetModel("bge-m3")
+	assert.Equal(t, "bge-m3", c.GetModel())
 	// SetModel 空串不生效（防误清空）
 	c.SetModel("")
-	assert.Equal(t, "text-embedding-3-large", c.GetModel())
+	assert.Equal(t, "bge-m3", c.GetModel())
 
 	c.SetAPIKey("rotated")
 	assert.Equal(t, "rotated", c.GetAPIKey())
@@ -198,19 +183,26 @@ func TestAccessorRuntimeSwitch(t *testing.T) {
 	_, err := c.EmbedQuery(context.Background(), "q")
 	require.NoError(t, err)
 	// 热更后的模型生效
-	assert.Equal(t, "text-embedding-3-large", m.body("model"))
+	assert.Equal(t, "bge-m3", m.body("model"))
 }
 
 func TestAuthHeader(t *testing.T) {
 	var gotAuth string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotAuth = r.Header.Get("Authorization")
-		fmt.Fprint(w, `{"data": [{"index": 0, "embedding": [0.1]}]}`)
+		fmt.Fprint(w, `{"embeddings": [[0.1]]}`)
 	}))
 	defer srv.Close()
 
-	c := New("secret", WithBaseURL(srv.URL))
+	// 本地部署：空 key 不带认证头
+	c := New("", WithBaseURL(srv.URL))
 	_, err := c.EmbedQuery(context.Background(), "q")
+	require.NoError(t, err)
+	assert.Empty(t, gotAuth)
+
+	// 代理网关：Bearer 形态
+	c2 := New("secret", WithBaseURL(srv.URL))
+	_, err = c2.EmbedQuery(context.Background(), "q")
 	require.NoError(t, err)
 	assert.Equal(t, "Bearer secret", gotAuth)
 }
@@ -226,6 +218,7 @@ func TestEmbedError_StatusClasses(t *testing.T) {
 	}{
 		{400, llmx.ErrInvalidRequest},
 		{401, llmx.ErrUnauthorized},
+		{404, llmx.ErrProviderUnavailable},
 		{429, llmx.ErrRateLimited},
 		{500, llmx.ErrAPIServerError},
 	}
@@ -233,7 +226,7 @@ func TestEmbedError_StatusClasses(t *testing.T) {
 		t.Run(fmt.Sprintf("status_%d", tc.status), func(t *testing.T) {
 			m := newMockServer(t, func(w http.ResponseWriter, r *http.Request) {
 				w.WriteHeader(tc.status)
-				fmt.Fprint(w, `{"error": {"message": "boom", "type": "api_error"}}`)
+				fmt.Fprint(w, `{"error": "boom"}`)
 			})
 			c := New("k", WithBaseURL(m.srv.URL))
 			_, err := c.EmbedQuery(context.Background(), "q")
@@ -260,13 +253,14 @@ func TestEmbedError_NetworkRefused(t *testing.T) {
 }
 
 func TestEmbedError_200WithErrorField(t *testing.T) {
-	// 部分网关 200 状态仍注入 error 字段（配额耗尽等）
+	// Ollama 任意状态均可能以 error 字段返回（模型未拉取等）
 	m := newMockServer(t, func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, `{"error": {"message": "quota exceeded", "type": "insufficient_quota"}}`)
+		fmt.Fprint(w, `{"error": "model 'nomic-embed-text' not found, try pulling it first"}`)
 	})
 	c := New("k", WithBaseURL(m.srv.URL))
 	_, err := c.EmbedQuery(context.Background(), "q")
 	assert.ErrorIs(t, err, llmx.ErrAPIServerError)
+	assert.Contains(t, err.Error(), "not found")
 }
 
 func TestMapTransportError_Cases(t *testing.T) {
@@ -284,12 +278,12 @@ func TestParseErrorBody(t *testing.T) {
 	cls := classifier{}
 
 	// 协议错误体 → 归一载荷
-	body := cls.ParseErrorBody(`{"error": {"message": "bad", "type": "invalid_request_error"}}`)
+	body := cls.ParseErrorBody(`{"error": "bad"}`)
 	require.NotNil(t, body)
-	assert.Equal(t, "invalid_request_error", body.Type)
+	assert.Equal(t, errorTypeOllamaEmbed, body.Type)
 	assert.Equal(t, "bad", body.Message)
 
-	// 非 JSON → 回退原文 + http_error 标记
+	// 非 JSON → 回退原文
 	fallback := cls.ParseErrorBody("raw text")
 	assert.Equal(t, adapter.ErrorTypeHTTP, fallback.Type)
 	assert.Equal(t, "raw text", fallback.Message)

@@ -1,9 +1,9 @@
 /*
  * @Author: kamalyes 501893067@qq.com
  * @Date: 2025-11-07 22:26:00
- * @LastEditors: kamalyes 501893067@qq.com
- * @LastEditTime: 2025-11-07 22:26:00
- * @FilePath: \go-llmx\adapters\openai\embedder\errors.go
+ * @LastEditors: wmxuan 836551135@qq.com
+ * @LastEditTime: 2026-07-09 21:38:16
+ * @FilePath: \go-llmx\embeddings\openai\errors.go
  * @Description: OpenAI 兼容嵌入适配器错误差异 —— wire 错误体解析 + Classifier 实现.
  * 公共映射骨架（网络/状态分类）见核心库 adapter 包
  *

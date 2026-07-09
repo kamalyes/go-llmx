@@ -1,9 +1,9 @@
 /*
  * @Author: kamalyes 501893067@qq.com
  * @Date: 2025-12-09 22:06:00
- * @LastEditors: kamalyes 501893067@qq.com
- * @LastEditTime: 2025-12-09 22:06:00
- * @FilePath: \go-llmx\adapters\ollama\embedder\constants.go
+ * @LastEditors: wmxuan 836551135@qq.com
+ * @LastEditTime: 2026-07-09 21:38:16
+ * @FilePath: \go-llmx\embeddings\ollama\constants.go
  * @Description: Ollama 嵌入适配器常量 —— 默认端点/模型/协议路径
  *
  * Copyright (c) 2025 by kamalyes, All Rights Reserved.
