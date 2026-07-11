@@ -1,0 +1,49 @@
+/*
+ * @Author: wmxuan 836551135@qq.com
+ * @Date: 2026-07-11 20:58:40
+ * @LastEditors: wmxuan 836551135@qq.com
+ * @LastEditTime: 2026-07-11 20:58:40
+ * @FilePath: \go-llmx\embeddings\cohere\errors.go
+ * @Description: Cohere 嵌入适配器错误差异 —— wire 错误体解析 + Classifier 实现.
+ * 公共映射骨架（网络/状态分类）见核心库 adapter 包
+ *
+ * Copyright (c) 2026 by kamalyes, All Rights Reserved.
+ */
+
+package lccembed
+
+import (
+	"encoding/json"
+
+	"github.com/kamalyes/go-llmx/adapter"
+)
+
+// wireAPIError 协议的错误响应体容器.
+// [EN] Error response container of the protocol.
+type wireAPIError struct {
+	// Message 错误信息（v2 扁平形态）.
+	// [EN] Error message (flat v2 shape).
+	Message string `json:"message"`
+}
+
+// classifier 嵌入协议的错误差异注入.
+// [EN] Embedding error classification.
+type classifier struct{}
+
+// ParseErrorBody 实现 adapter.Classifier（非 JSON 回退原始文本）.
+// [EN] Implement adapter.Classifier (raw text fallback).
+func (classifier) ParseErrorBody(body string) *adapter.ErrorBody {
+	var we wireAPIError
+	if err := json.Unmarshal([]byte(body), &we); err != nil || we.Message == "" {
+		return &adapter.ErrorBody{Message: body, Type: adapter.ErrorTypeHTTP}
+	}
+	return &adapter.ErrorBody{Message: we.Message}
+}
+
+// MapErrorType 实现 adapter.Classifier（无协议特有类型映射，恒走状态分类兜底）.
+// [EN] Implement adapter.Classifier (no type mapping; always falls back to status class).
+func (classifier) MapErrorType(string) error { return nil }
+
+// MapSpecial 实现 adapter.Classifier（无特有错误认领）.
+// [EN] Implement adapter.Classifier (nothing special to claim).
+func (classifier) MapSpecial(error) error { return nil }
