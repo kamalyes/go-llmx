@@ -14,9 +14,17 @@ package transport
 // HTTP 方法常量.
 // [EN] HTTP method constants.
 const (
+	// MethodGet GET 请求.
+	// [EN] GET request.
+	MethodGet = "GET"
+
 	// MethodPost POST 请求.
 	// [EN] POST request.
 	MethodPost = "POST"
+
+	// MethodPut PUT 请求.
+	// [EN] PUT request.
+	MethodPut = "PUT"
 )
 
 // 常用 Content-Type 值.
