@@ -25,6 +25,7 @@ graph TB
         Tool[tool<br/>工具调用循环<br/>JSON Schema 生成]
         Prompt[prompt<br/>提示词模板]
         Memory[memory<br/>会话记忆<br/>Buffer/Window]
+        Graph[graph<br/>知识图谱<br/>提取/召回]
     end
 
     subgraph "核心契约层 Core Contracts"
@@ -47,12 +48,21 @@ graph TB
             OpenAI[openai<br/>SSE 流式]
             Anthropic[anthropic<br/>SSE 流式]
             Ollama[ollama<br/>NDJSON 流式]
+            GoogleAI[googleai<br/>SSE 流式]
+            Mistral[mistral<br/>SSE 流式]
+            Cohere[cohere<br/>SSE 流式]
         end
 
-        subgraph "能力子包"
-            OpenAIEmbed[openai/embedder]
-            OllamaEmbed[ollama/embedder]
-            VSMemory[vectorstores/memory<br/>内存余弦检索]
+        subgraph "嵌入适配器（独立 go.mod）"
+            Embeds[embeddings<br/>openai/ollama/googleai<br/>mistral/cohere]
+        end
+
+        subgraph "向量库适配器（独立 go.mod）"
+            VSMemory[vectorstores/memory<br/>内存余弦]
+            VSRedis[redisvector<br/>RediSearch KNN]
+            VSPG[pgvector<br/>pgx 批量]
+            VSMilvus[milvus<br/>RESTful v2]
+            VSQdrant[qdrant<br/>REST batch]
         end
     end
 
@@ -83,8 +93,9 @@ graph TB
     OpenAI --> Base
     Anthropic --> Base
     Ollama --> Base
-    OpenAIEmbed --> Base
-    OllamaEmbed --> Base
+    GoogleAI --> Base
+    Mistral --> Base
+    Cohere --> Base
 
     Base --> HTTP
     Base --> SSE
@@ -95,7 +106,12 @@ graph TB
     SSE --> OpenAIPro
     SSE --> ClaudePro
     NDJSON --> OllamaPro
+    Embeds -.->|嵌入实现| Embedder
     VSMemory -.->|内存实现| VectorStore
+    VSRedis -.->|向量实现| VectorStore
+    VSPG -.->|向量实现| VectorStore
+    VSMilvus -.->|向量实现| VectorStore
+    VSQdrant -.->|向量实现| VectorStore
 
     classDef appStyle fill:#e1f5fe,stroke:#01579b,stroke-width:2px
     classDef orchStyle fill:#fff9c4,stroke:#f57f17,stroke-width:2px
@@ -105,9 +121,9 @@ graph TB
     classDef providerStyle fill:#e8f5e8,stroke:#1b5e20,stroke-width:2px
 
     class App appStyle
-    class Chain,Tool,Prompt,Memory orchStyle
+    class Chain,Tool,Prompt,Memory,Graph orchStyle
     class Model,Embedder,VectorStore,TextSplitter,Sentinels contractStyle
-    class Base,OpenAI,Anthropic,Ollama,OpenAIEmbed,OllamaEmbed,VSMemory adapterStyle
+    class Base,OpenAI,Anthropic,Ollama,GoogleAI,Mistral,Cohere,Embeds,VSMemory,VSRedis,VSPG,VSMilvus,VSQdrant adapterStyle
     class HTTP,SSE,NDJSON,Classify transportStyle
     class OpenAIPro,ClaudePro,OllamaPro providerStyle
 ```
@@ -141,13 +157,14 @@ graph TB
 
 - **链式编排**：LLMChain（模板直出）/ ConversationChain（记忆回写）/ SequentialChain（串行管道）
 - **会话记忆**：Buffer 全量 / Window 滑窗，接口开放重型后端扩展
+- **知识图谱**：三元组邻接索引 + BFS/最短路图算法，LLM 提取器入图、实体命中召回（一跳全量 + 二跳截断）
 - **提示词模板**：Go `text/template` 极简封装，结构体直接渲染
 
 ### 📚 RAG 检索链路
 
-- **嵌入契约**：`Embedder` 文档索引/查询检索双阶段统一
+- **嵌入契约**：`Embedder` 文档索引/查询检索双阶段统一，五家适配器（OpenAI/Ollama/GoogleAI/Mistral/Cohere）
 - **递归分块**：分隔符优先级递归 + CJK 友好 + 块重叠
-- **向量检索**：内存余弦实现（单测/原型/小规模），`VectorStore` 契约开放 Redis/pgvector 扩展
+- **向量检索**：五家后端（内存余弦/Redis/PostgreSQL/Milvus/Qdrant），数据格式与 langchaingo 对齐、存量数据平滑读写
 - **元数据过滤**：等值 Filter 语义，索引与检索阶段解耦
 
 ### 🛡️ 错误与可靠性
@@ -167,6 +184,15 @@ go get github.com/kamalyes/go-llmx
 go get github.com/kamalyes/go-llmx/adapters/openai
 go get github.com/kamalyes/go-llmx/adapters/anthropic
 go get github.com/kamalyes/go-llmx/adapters/ollama
+go get github.com/kamalyes/go-llmx/adapters/googleai
+go get github.com/kamalyes/go-llmx/adapters/mistral
+go get github.com/kamalyes/go-llmx/adapters/cohere
+
+# 按需引入向量库适配器（独立模块）
+go get github.com/kamalyes/go-llmx/vectorstores/redisvector
+go get github.com/kamalyes/go-llmx/vectorstores/pgvector
+go get github.com/kamalyes/go-llmx/vectorstores/milvus
+go get github.com/kamalyes/go-llmx/vectorstores/qdrant
 ```
 
 **系统要求**：Go 1.25+ | 支持 Linux/Windows/macOS
@@ -241,13 +267,26 @@ docs, _ := store.SimilaritySearch(ctx, queryVec, topK, llmx.Filter{"source": "do
 | `prompt/` | 提示词模板 | `go-llmx/prompt` |
 | `memory/` | 会话记忆（Buffer/Window） | `go-llmx/memory` |
 | `chain/` | 链式编排（LLM/Conversation/Sequential） | `go-llmx/chain` |
+| `graph/` | 知识图谱（邻接索引/图算法/提取器/图谱记忆） | `go-llmx/graph` |
 | `textsplitter/` | 递归分块（CJK 友好） | `go-llmx/textsplitter` |
 | `transport/` | HTTP/JSON/SSE/NDJSON 传输 + 状态分类 | `go-llmx/transport` |
 | `adapter/` | 适配器公共基座（选项/访问器/错误映射） | `go-llmx/adapter` |
-| `adapters/openai` | OpenAI 兼容对话 + embedder 子包 | 独立模块 |
+| `adapters/openai` | OpenAI 兼容对话 | 独立模块 |
 | `adapters/anthropic` | Anthropic 对话 | 独立模块 |
-| `adapters/ollama` | Ollama 对话 + embedder 子包 | 独立模块 |
-| `adapters/vectorstores/memory` | 内存余弦检索 | 独立模块 |
+| `adapters/ollama` | Ollama 对话 | 独立模块 |
+| `adapters/googleai` | Google AI（Gemini）对话 | 独立模块 |
+| `adapters/mistral` | Mistral 对话 | 独立模块 |
+| `adapters/cohere` | Cohere 对话 | 独立模块 |
+| `embeddings/openai` | OpenAI 嵌入 | 独立模块 |
+| `embeddings/ollama` | Ollama 嵌入 | 独立模块 |
+| `embeddings/googleai` | Google AI 嵌入 | 独立模块 |
+| `embeddings/mistral` | Mistral 嵌入 | 独立模块 |
+| `embeddings/cohere` | Cohere 嵌入 | 独立模块 |
+| `vectorstores/memory` | 内存余弦检索 | 独立模块 |
+| `vectorstores/redisvector` | Redis（RediSearch KNN） | 独立模块 |
+| `vectorstores/pgvector` | PostgreSQL（pgx 批量 + HNSW） | 独立模块 |
+| `vectorstores/milvus` | Milvus（RESTful v2 直连） | 独立模块 |
+| `vectorstores/qdrant` | Qdrant（REST batch upsert） | 独立模块 |
 
 ## 🧪 测试与质量
 
