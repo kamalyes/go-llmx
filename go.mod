@@ -2,7 +2,10 @@ module github.com/kamalyes/go-llmx
 
 go 1.25.0
 
-require github.com/stretchr/testify v1.11.1
+require (
+	github.com/stretchr/testify v1.11.1
+	golang.org/x/net v0.46.1-0.20251013234738-63d1a5100f82
+)
 
 require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
