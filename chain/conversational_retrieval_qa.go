@@ -1,8 +1,8 @@
 /*
  * @Author: kamalyes 501893067@qq.com
- * @Date: 2026-07-16 16:05:47
+ * @Date: 2026-07-16 09:05:56
  * @LastEditors: kamalyes 501893067@qq.com
- * @LastEditTime: 2026-07-16 16:05:47
+ * @LastEditTime: 2026-07-16 16:05:56
  * @FilePath: \go-llmx\chain\conversational_retrieval_qa.go
  * @Description: 多轮检索问答链 —— 历史改写 + 检索 + 作答 + 记忆回写，
  * 替代 langchaingo ConversationalRetrievalQA
