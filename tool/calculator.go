@@ -163,10 +163,7 @@ func (p *exprParser) parsePower() (float64, error) {
 // parseUnary 一元正负与原子.
 // [EN] Unary sign and atoms.
 func (p *exprParser) parseUnary() (float64, error) {
-	p.skipSpace()
-	if p.peekOp("-+") != 0 {
-		op := p.src[p.pos]
-		p.pos++
+	if op := p.peekOp("-+"); op != 0 {
 		val, err := p.parseUnary()
 		if err != nil {
 			return 0, err
