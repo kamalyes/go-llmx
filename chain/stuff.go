@@ -14,6 +14,7 @@ package chain
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	llmx "github.com/kamalyes/go-llmx"
 	"github.com/kamalyes/go-llmx/prompt"
@@ -65,11 +66,30 @@ func (c *Stuff) Run(ctx context.Context, docs []llmx.Document, query string) (st
 	return llmx.FirstText(resp)
 }
 
-// renderDocumentPrompt 渲染文档链提示词（nil 模板走默认并懒编译）.
-// [EN] Render a document-chain prompt (lazy-compiles the default).
+// defaultTemplates 缺省模板缓存：懒解析一次，后续 Run 命中缓存
+// （langchaingo 每次 Run 重新 parse 模板，高频链路下纯浪费）.
+// [EN] Default-template cache: parse once, hit afterwards.
+var defaultTemplates sync.Map // string -> *prompt.Template
+
+// defaultDocumentTemplate 取缺省模板（并发安全，解析一次）.
+// [EN] Get a default template (parse once, thread-safe).
+func defaultDocumentTemplate(fallback string) (*prompt.Template, error) {
+	if v, ok := defaultTemplates.Load(fallback); ok {
+		return v.(*prompt.Template), nil
+	}
+	compiled, err := prompt.New(fallback)
+	if err != nil {
+		return nil, err
+	}
+	actual, _ := defaultTemplates.LoadOrStore(fallback, compiled)
+	return actual.(*prompt.Template), nil
+}
+
+// renderDocumentPrompt 渲染文档链提示词（nil 模板走缓存缺省）.
+// [EN] Render a document-chain prompt (cached default when nil).
 func renderDocumentPrompt(tpl *prompt.Template, fallback string, vars documentVars) (string, error) {
 	if tpl == nil {
-		compiled, err := prompt.New(fallback)
+		compiled, err := defaultDocumentTemplate(fallback)
 		if err != nil {
 			return "", err
 		}

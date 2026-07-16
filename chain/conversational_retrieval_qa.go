@@ -191,7 +191,7 @@ func (c *ConversationalRetrievalQA) condense(ctx context.Context, history []llmx
 	}
 	tpl := c.condenseTpl
 	if tpl == nil {
-		compiled, err := prompt.New(condenseQuestionPrompt)
+		compiled, err := defaultDocumentTemplate(condenseQuestionPrompt)
 		if err != nil {
 			return "", err
 		}
