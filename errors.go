@@ -62,4 +62,8 @@ var (
 	// ErrInvalidVectors 向量载荷非法（数量不匹配 / 维度为零）.
 	// [EN] Invalid vector payload (count mismatch / zero dimension).
 	ErrInvalidVectors = errors.New("llmx: invalid vectors")
+
+	// ErrInvalidResponse 模型响应内容无效（空目的地名 / 无法解析的输出）.
+	// [EN] Invalid model response content (empty name / unparseable output).
+	ErrInvalidResponse = errors.New("llmx: invalid response")
 )
