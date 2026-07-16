@@ -287,6 +287,13 @@ docs, _ := store.SimilaritySearch(ctx, queryVec, topK, llmx.Filter{"source": "do
 | `vectorstores/pgvector` | PostgreSQL（pgx 批量 + HNSW） | 独立模块 |
 | `vectorstores/milvus` | Milvus（RESTful v2 直连） | 独立模块 |
 | `vectorstores/qdrant` | Qdrant（REST batch upsert） | 独立模块 |
+| `failover.go` | 容灾路由（Failover/Random/RoundRobin + EmbedderFailover） | `go-llmx` |
+| `documentloaders/` | 加载器（text/csv/directory/json/html） | `go-llmx/documentloaders` |
+
+## 📖 文档
+
+- **[GETTING-STARTED.md](GETTING-STARTED.md)** —— 15 分钟跑通：安装 → 首次对话 → 工具/记忆/RAG → 多厂商无损切换与容灾路由
+- **[ARCHITECTURE.md](ARCHITECTURE.md)** —— 设计取舍与性能证据：契约层、编排原理（模板缓存 1.79x / token 切分 -99.7% 分配）、容灾语义、与 langchaingo 差异对照
 
 ## 🧪 测试与质量
 

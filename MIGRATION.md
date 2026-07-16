@@ -454,7 +454,7 @@ vecs, err := e.EmbedDocuments(ctx, []string{"a", "b"})
 q, err    := e.EmbedQuery(ctx, "查询")
 
 // go-llmx（独立子包，与对话客户端解耦配置）
-import lcembed "github.com/kamalyes/go-llmx/adapters/openai/embedder"
+import lcembed "github.com/kamalyes/go-llmx/embeddings/openai"
 
 e := lcembed.New(os.Getenv("OPENAI_API_KEY"))
 vecs, err := e.EmbedDocuments(ctx, []string{"a", "b"})
