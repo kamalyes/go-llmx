@@ -2,10 +2,11 @@
  * @Author: kamalyes 501893067@qq.com
  * @Date: 2026-07-16 21:18:26
  * @LastEditors: kamalyes 501893067@qq.com
- * @LastEditTime: 2026-07-16 21:18:26
+ * @LastEditTime: 2026-07-16 21:58:03
  * @FilePath: \go-llmx\textsplitter\token.go
  * @Description: 近似 token 分块器 —— 按 rune/4 估算 token 预算切分
- * （与 memory.ApproxTokens 同一规则），切点优先落在词边界，
+ * （与 memory.ApproxTokens 同一规则），切点优先落在词边界；
+ * 流式字节扫描实现（utf8 原地解码 + 字节切片切块零复制），
  * 零依赖替代 langchaingo 依赖 tiktoken 的 TokenTextSplitter
  *
  * Copyright (c) 2026 by kamalyes, All Rights Reserved.
@@ -51,10 +52,12 @@ func NewTokenSplitter(chunkTokens, overlapTokens int) *TokenSplitter {
 }
 
 // Split 实现 Splitter：按 token 预算滑窗切块，切点优先词边界.
+// 流式字节扫描：块直接 text[byteA:byteB] 切片共享底层，无 []rune 复制
+// 与逐块 string 转换（对照 langchaingo tiktoken 路径的词表解码开销）.
 // [EN] Implement Splitter: budget sliding window, word-boundary preferred.
+// Streaming byte scan: chunks are zero-copy subslices of the source.
 func (s *TokenSplitter) Split(text string) []string {
-	runes := []rune(text)
-	if len(runes) == 0 {
+	if text == "" {
 		return nil
 	}
 
@@ -62,48 +65,79 @@ func (s *TokenSplitter) Split(text string) []string {
 	overlapRunes := s.overlapTokens * runesPerToken
 
 	var chunks []string
-	start := 0
-	for start < len(runes) {
-		end := start + chunkRunes
-		if end >= len(runes) {
-			if chunk := strings.TrimRightFunc(string(runes[start:]), unicode.IsSpace); chunk != "" {
+	bStart := 0
+	for bStart < len(text) {
+		// 前向扫描一个窗口：满 chunkRunes 个 rune 或文本耗尽
+		// [EN] Scan one window: chunkRunes runes or end of text.
+		bPos, rCount := bStart, 0
+		bEnd, bBound := -1, -1 // 窗口末字节、半窗后最后词边界字节
+		var prevR rune
+		for bPos < len(text) {
+			r, size := utf8.DecodeRuneInString(text[bPos:])
+			rCount++
+			if rCount > chunkRunes/2 && isBoundary(r, prevR) {
+				bBound = bPos // 持续覆盖 → 窗口内最后一个边界
+			}
+			prevR = r
+			bPos += size
+			if rCount >= chunkRunes {
+				bEnd = bPos
+				break
+			}
+		}
+
+		// 尾块：文本耗尽（rCount < chunkRunes）
+		// [EN] Tail chunk: text exhausted.
+		if bEnd < 0 {
+			if chunk := strings.TrimRightFunc(text[bStart:], unicode.IsSpace); chunk != "" {
 				chunks = append(chunks, chunk)
 			}
 			break
 		}
 
-		// 块内预算内寻找最后一个词边界（空白处），找不到才硬切
-		// [EN] Find the last word boundary within budget; hard-cut otherwise.
-		cut := end
-		for i := end - 1; i > start+chunkRunes/2; i-- {
-			if isBoundary(runes[i], runes[i-1]) {
-				cut = i
-				break
-			}
+		cut := bEnd
+		if bBound > bStart {
+			cut = bBound // 词边界切块，找不到（无空白的连续长文）硬切
 		}
-		if chunk := strings.TrimRightFunc(string(runes[start:cut]), unicode.IsSpace); chunk != "" {
+		if chunk := strings.TrimRightFunc(text[bStart:cut], unicode.IsSpace); chunk != "" {
 			chunks = append(chunks, chunk)
 		}
 
-		// 下一块起点：回退 overlap 个 rune，同样对齐词边界
-		// [EN] Next start: rewind overlap runes, also boundary-aligned.
-		start = cut - overlapRunes
-		if start < cut-chunkRunes/2 { // overlap 超半块时防倒退
-			start = cut
-		}
-		if start <= 0 || start >= len(runes) {
-			if start >= len(runes) {
-				break
+		// overlap 回退：从 cut 反向走 overlapRunes 个 rune（窗口小，回退廉价）
+		// [EN] Overlap rewind: step back overlapRunes runes from cut.
+		nStart := cut
+		if overlapRunes > 0 {
+			nStart = rewindRunes(text, cut, overlapRunes)
+			if half := bStart + (cut-bStart)/2; nStart < half {
+				nStart = cut // 过度回退防倒退：不跨过半窗
 			}
-			start = cut
+			// 前向对齐词边界，避免重叠切在词中间
+			// [EN] Align forward to a word boundary.
+			for nStart < len(text) && nStart > bStart {
+				r, size := utf8.DecodeRuneInString(text[nStart:])
+				pr, _ := utf8.DecodeLastRuneInString(text[:nStart])
+				if isBoundary(r, pr) {
+					break
+				}
+				nStart += size
+			}
 		}
-		// 对齐词边界避免重叠切在词中间
-		// [EN] Align to a boundary to avoid mid-word overlap.
-		for start > 0 && start < len(runes) && !isBoundary(runes[start], runes[start-1]) {
-			start++
+		if nStart <= bStart {
+			nStart = cut // 保进度：绝不原地打转
 		}
+		bStart = nStart
 	}
 	return chunks
+}
+
+// rewindRunes 从字节位置 pos 反向回退 n 个 rune（不越界越过 floor）.
+// [EN] Step back n runes from byte position pos.
+func rewindRunes(text string, pos, n int) int {
+	for i := 0; i < n && pos > 0; i++ {
+		_, size := utf8.DecodeLastRuneInString(text[:pos])
+		pos -= size
+	}
+	return pos
 }
 
 // isBoundary 判断 r 前是否为可切词边界（当前是空白或前一个是空白）.
