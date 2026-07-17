@@ -289,6 +289,8 @@ docs, _ := store.SimilaritySearch(ctx, queryVec, topK, llmx.Filter{"source": "do
 | `vectorstores/qdrant` | Qdrant（REST batch upsert） | 独立模块 |
 | `failover.go` | 容灾路由（Failover/Random/RoundRobin + EmbedderFailover） | `go-llmx` |
 | `documentloaders/` | 加载器（text/csv/directory/json/html） | `go-llmx/documentloaders` |
+| `docstore/` | 文档键值存储（父文档检索地基，进程内实现） | `go-llmx/docstore` |
+| `retriever/` | 检索器增强（父文档/多查询） | `go-llmx/retriever` |
 
 ## 📖 文档
 
