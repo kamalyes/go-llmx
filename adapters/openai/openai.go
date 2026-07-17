@@ -2,7 +2,7 @@
  * @Author: kamalyes 501893067@qq.com
  * @Date: 2025-09-01 20:28:00
  * @LastEditors: kamalyes 501893067@qq.com
- * @LastEditTime: 2026-06-27 10:18:33
+ * @LastEditTime: 2026-07-17 11:02:36
  * @FilePath: \go-llmx\adapters\openai\openai.go
  * @Description: OpenAI 兼容对话适配器 —— 编排 transport 传输与 wire 编解码.
  * 覆盖 OpenAI / DeepSeek / OpenRouter / Groq / vLLM 等兼容端点（WithBaseURL 切换）；
@@ -105,6 +105,7 @@ func (c *Client) GenerateContent(ctx context.Context, messages []llmx.Message, o
 			CompletionTokens: wr.Usage.CompletionTokens,
 			TotalTokens:      wr.Usage.TotalTokens,
 		},
+		Choices: make([]llmx.Choice, 0, len(wr.Choices)),
 	}
 	for _, ch := range wr.Choices {
 		resp.Choices = append(resp.Choices, decodeChoice(ch))
@@ -225,14 +226,10 @@ func validateMessages(messages []llmx.Message) error {
 	return nil
 }
 
-// headers 认证与协议头（Bearer 形态）.
-// [EN] Auth and protocol headers (Bearer style).
+// headers 认证与协议头（Bearer 形态，委托基座共享缓存）.
+// [EN] Auth and protocol headers (Bearer, delegated to the base cache).
 func (c *Client) headers() map[string]string {
-	h := map[string]string{}
-	if c.APIKey != "" {
-		h["Authorization"] = "Bearer " + c.APIKey
-	}
-	return h
+	return c.BearerHeaders()
 }
 
 // errStopReading SSE 流正常终止信号（ReadSSE 以 io.EOF 语义收尾）.

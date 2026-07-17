@@ -2,7 +2,7 @@
  * @Author: wmxuan 836551135@qq.com
  * @Date: 2026-07-11 21:02:19
  * @LastEditors: wmxuan 836551135@qq.com
- * @LastEditTime: 2026-07-11 21:02:19
+ * @LastEditTime: 2026-07-17 11:02:36
  * @FilePath: \go-llmx\embeddings\cohere\embedder.go
  * @Description: Cohere 嵌入适配器 —— /v2/embed 协议（embed-v4.0）.
  * 检索语义非对称：索引走 search_document、查询走 search_query（模型分开优化）；
@@ -15,7 +15,6 @@ package lccembed
 
 import (
 	"context"
-	"fmt"
 
 	llmx "github.com/kamalyes/go-llmx"
 	"github.com/kamalyes/go-llmx/adapter"
@@ -74,14 +73,10 @@ func New(apiKey string, opts ...Option) *Client {
 	return c
 }
 
-// headers 认证头（Bearer 形态）.
-// [EN] Auth headers (Bearer style).
+// headers 认证头（Bearer 形态，委托基座共享缓存）.
+// [EN] Auth headers (Bearer, delegated to the base cache).
 func (c *Client) headers() map[string]string {
-	h := map[string]string{}
-	if c.APIKey != "" {
-		h["Authorization"] = "Bearer " + c.APIKey
-	}
-	return h
+	return c.BearerHeaders()
 }
 
 // embed 走 /v2/embed 端点（input_type 区分索引/查询语义）.
@@ -97,8 +92,7 @@ func (c *Client) embed(ctx context.Context, texts []string, inputType string) ([
 		return nil, adapter.MapTransportError(err, classifier{})
 	}
 	if len(wr.Embeddings.Float) != len(texts) {
-		return nil, fmt.Errorf("%w: %d vectors for %d texts",
-			llmx.ErrEmptyResponse, len(wr.Embeddings.Float), len(texts))
+		return nil, adapter.ErrVectorCountMismatch(len(wr.Embeddings.Float), len(texts))
 	}
 	return wr.Embeddings.Float, nil
 }
@@ -106,8 +100,8 @@ func (c *Client) embed(ctx context.Context, texts []string, inputType string) ([
 // EmbedDocuments 实现 llmx.Embedder（批量嵌入，索引阶段，input_type=search_document）.
 // [EN] Implement llmx.Embedder (batch, indexing phase).
 func (c *Client) EmbedDocuments(ctx context.Context, texts []string) ([][]float64, error) {
-	if len(texts) == 0 {
-		return nil, fmt.Errorf("%w: no texts to embed", llmx.ErrInvalidRequest)
+	if err := adapter.ValidateEmbedTexts(texts); err != nil {
+		return nil, err
 	}
 	c.LogModel(ctx, c.Model, "embed", len(texts))
 	return c.embed(ctx, texts, inputTypeDocument)

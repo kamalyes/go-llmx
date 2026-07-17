@@ -2,7 +2,7 @@
  * @Author: kamalyes 501893067@qq.com
  * @Date: 2026-05-25 21:16:58
  * @LastEditors: wmxuan 836551135@qq.com
- * @LastEditTime: 2026-07-09 21:38:16
+ * @LastEditTime: 2026-07-17 11:02:36
  * @FilePath: \go-llmx\embeddings\ollama\logging_test.go
  * @Description: ctx + logger 端到端测试 —— embed 打点（批量 count=N / 检索 count=1 的
  * input 两形态收口）、业务 ctx 追踪值贯通、取消语义跨层保留. mock 基建见 embedder_test.go
@@ -85,8 +85,14 @@ func kvVal(kv []interface{}, key string) (interface{}, bool) {
 }
 
 func TestE2E_EmbedLogging_InputShapes(t *testing.T) {
-	m := newMockServer(t, func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, `{"embeddings":[[0.1,0.2],[0.3,0.4]]}`)
+	var m *mockServer
+	m = newMockServer(t, func(w http.ResponseWriter, r *http.Request) {
+		// 按输入形态回放（批量 2 条 / 单条字符串 1 条），数量校验语义下两阶段共用
+		if _, ok := m.body("input").([]any); ok {
+			fmt.Fprint(w, `{"embeddings":[[0.1,0.2],[0.3,0.4]]}`)
+			return
+		}
+		fmt.Fprint(w, `{"embeddings":[[0.1,0.2]]}`)
 	})
 
 	cl := newE2ELogger()

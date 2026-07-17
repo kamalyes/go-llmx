@@ -2,7 +2,7 @@
  * @Author: wmxuan 836551135@qq.com
  * @Date: 2026-07-09 21:09:38
  * @LastEditors: wmxuan 836551135@qq.com
- * @LastEditTime: 2026-07-09 21:09:38
+ * @LastEditTime: 2026-07-17 11:02:36
  * @FilePath: \go-llmx\embeddings\googleai\embedder.go
  * @Description: Google AI 嵌入适配器 —— embedContent / batchEmbedContents 协议.
  * 检索语义非对称：索引走 RETRIEVAL_DOCUMENT、查询走 RETRIEVAL_QUERY（模型分开优化）；
@@ -15,7 +15,6 @@ package lcgembed
 
 import (
 	"context"
-	"fmt"
 
 	llmx "github.com/kamalyes/go-llmx"
 	"github.com/kamalyes/go-llmx/adapter"
@@ -91,8 +90,8 @@ func (c *Client) headers() map[string]string {
 //
 // 单批上限 100 条（官方限制），超出自动分批顺序提交，返回顺序与输入一致
 func (c *Client) EmbedDocuments(ctx context.Context, texts []string) ([][]float64, error) {
-	if len(texts) == 0 {
-		return nil, fmt.Errorf("%w: no texts to embed", llmx.ErrInvalidRequest)
+	if err := adapter.ValidateEmbedTexts(texts); err != nil {
+		return nil, err
 	}
 	c.LogModel(ctx, c.Model, "embed", len(texts))
 
@@ -118,8 +117,7 @@ func (c *Client) EmbedDocuments(ctx context.Context, texts []string) ([][]float6
 			return nil, adapter.MapTransportError(err, classifier{})
 		}
 		if len(wr.Embeddings) != len(batch) {
-			return nil, fmt.Errorf("%w: batch returned %d vectors for %d texts",
-				llmx.ErrEmptyResponse, len(wr.Embeddings), len(batch))
+			return nil, adapter.ErrVectorCountMismatch(len(wr.Embeddings), len(batch))
 		}
 		for _, e := range wr.Embeddings {
 			vectors = append(vectors, e.Values)

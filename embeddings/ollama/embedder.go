@@ -2,7 +2,7 @@
  * @Author: kamalyes 501893067@qq.com
  * @Date: 2025-12-09 22:37:00
  * @LastEditors: wmxuan 836551135@qq.com
- * @LastEditTime: 2026-07-09 21:38:16
+ * @LastEditTime: 2026-07-17 11:02:36
  * @FilePath: \go-llmx\embeddings\ollama\embedder.go
  * @Description: Ollama 原生嵌入适配器 —— /api/embed 协议.
  * 独立子包实现 llmx.Embedder（与对话客户端独立配置端点/模型）
@@ -75,6 +75,9 @@ func New(apiKey string, opts ...Option) *Client {
 // EmbedDocuments 实现 llmx.Embedder（批量嵌入，索引阶段；input 以数组形态发送）.
 // [EN] Implement llmx.Embedder (batch embedding; input as array).
 func (c *Client) EmbedDocuments(ctx context.Context, texts []string) ([][]float64, error) {
+	if err := adapter.ValidateEmbedTexts(texts); err != nil {
+		return nil, err
+	}
 	return c.embed(ctx, texts)
 }
 
@@ -84,9 +87,6 @@ func (c *Client) EmbedQuery(ctx context.Context, text string) ([]float64, error)
 	vectors, err := c.embed(ctx, text)
 	if err != nil {
 		return nil, err
-	}
-	if len(vectors) == 0 {
-		return nil, llmx.ErrEmptyResponse
 	}
 	return vectors[0], nil
 }
@@ -112,17 +112,16 @@ func (c *Client) embed(ctx context.Context, input any) ([][]float64, error) {
 	if wr.Error != "" {
 		return nil, adapter.WrapErrorBody(&adapter.ErrorBody{Type: errorTypeOllamaEmbed, Message: wr.Error})
 	}
+	if len(wr.Embeddings) != n {
+		return nil, adapter.ErrVectorCountMismatch(len(wr.Embeddings), n)
+	}
 	return wr.Embeddings, nil
 }
 
-// headers 认证头（本地部署可空，代理网关 Bearer 形态）.
-// [EN] Auth headers (empty locally, Bearer for gateways).
+// headers 认证头（本地部署可空，代理网关 Bearer 形态，委托基座共享缓存）.
+// [EN] Auth headers (empty locally, Bearer for gateways, delegated to the base cache).
 func (c *Client) headers() map[string]string {
-	h := map[string]string{}
-	if c.APIKey != "" {
-		h["Authorization"] = "Bearer " + c.APIKey
-	}
-	return h
+	return c.BearerHeaders()
 }
 
 // 编译期断言：实现 llmx.Embedder 契约.

@@ -2,7 +2,7 @@
  * @Author: kamalyes 501893067@qq.com
  * @Date: 2026-07-02 20:19:33
  * @LastEditors: kamalyes 501893067@qq.com
- * @LastEditTime: 2026-07-02 20:25:31
+ * @LastEditTime: 2026-07-17 11:02:36
  * @FilePath: \go-llmx\adapters\mistral\mistral.go
  * @Description: Mistral 适配器 —— Chat Completions 协议实现（含 SSE 流式）.
  * 编排 transport 传输与 wire 编解码，与 openai 适配器同构但协议差异独立收口
@@ -75,10 +75,10 @@ func New(apiKey string, opts ...Option) *Client {
 	return c
 }
 
-// headers 认证头（Bearer 形态）.
-// [EN] Auth headers.
+// headers 认证头（Bearer 形态，委托基座共享缓存；空密钥不发无效头）.
+// [EN] Auth headers (Bearer, delegated to the base cache).
 func (c *Client) headers() map[string]string {
-	return map[string]string{"Authorization": "Bearer " + c.APIKey}
+	return c.BearerHeaders()
 }
 
 // GenerateContent 实现 llmx.Model（非流式）.

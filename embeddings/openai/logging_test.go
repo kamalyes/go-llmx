@@ -2,7 +2,7 @@
  * @Author: kamalyes 501893067@qq.com
  * @Date: 2026-05-25 20:38:19
  * @LastEditors: wmxuan 836551135@qq.com
- * @LastEditTime: 2026-07-09 21:38:16
+ * @LastEditTime: 2026-07-17 11:02:36
  * @FilePath: \go-llmx\embeddings\openai\logging_test.go
  * @Description: ctx + logger 端到端测试 —— embed 打点（批量 count=N / 检索 count=1）、
  * 业务 ctx 追踪值贯通、取消语义跨层保留. mock 基建见 embedder_test.go
@@ -85,8 +85,10 @@ func kvVal(kv []interface{}, key string) (interface{}, bool) {
 }
 
 func TestE2E_EmbedLogging_CountsByPhase(t *testing.T) {
-	m := newMockServer(t, func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, `{"data":[{"index":0,"embedding":[0.1,0.2]},{"index":1,"embedding":[0.3,0.4]}],"usage":{"prompt_tokens":2,"total_tokens":2}}`)
+	// 按输入数量回放（批量 N / 检索 1），数量校验语义下两阶段共用
+	var m *mockServer
+	m = newMockServer(t, func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, embeddingsResponder(len(m.body("input").([]any))))
 	})
 
 	cl := newE2ELogger()

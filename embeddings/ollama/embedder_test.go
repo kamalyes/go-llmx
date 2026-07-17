@@ -2,7 +2,7 @@
  * @Author: kamalyes 501893067@qq.com
  * @Date: 2025-12-09 22:52:00
  * @LastEditors: wmxuan 836551135@qq.com
- * @LastEditTime: 2026-07-09 21:38:16
+ * @LastEditTime: 2026-07-17 11:02:36
  * @FilePath: \go-llmx\embeddings\ollama\embedder_test.go
  * @Description: Ollama 嵌入适配器测试 —— input 两形态/index 顺序对应/
  * 错误映射/访问器. mock 基建独立维护（子包不依赖对话测试）
@@ -118,14 +118,13 @@ func TestEmbedQuery(t *testing.T) {
 }
 
 func TestEmbed_EmptyBatch(t *testing.T) {
-	// 空批量：input 为空数组，响应空集合 → 空结果不报错
+	// 空批量前置拦截（不出网）
 	m := newMockServer(t, func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, `{"embeddings": []}`)
+		t.Error("空批量不应发出请求")
 	})
 	c := New("k", WithBaseURL(m.srv.URL))
-	vectors, err := c.EmbedDocuments(context.Background(), []string{})
-	require.NoError(t, err)
-	assert.Empty(t, vectors)
+	_, err := c.EmbedDocuments(context.Background(), []string{})
+	assert.ErrorIs(t, err, llmx.ErrInvalidRequest)
 }
 
 func TestEmbedQuery_EmptyResponse(t *testing.T) {
@@ -139,14 +138,13 @@ func TestEmbedQuery_EmptyResponse(t *testing.T) {
 }
 
 func TestEmbed_EmptyEmbeddingsField(t *testing.T) {
-	// 响应缺省 embeddings 字段 → nil 切片不报错
+	// 响应缺省 embeddings 字段 → 向量数校验拦截
 	m := newMockServer(t, func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, `{}`)
 	})
 	c := New("k", WithBaseURL(m.srv.URL))
-	vectors, err := c.EmbedDocuments(context.Background(), []string{"a"})
-	require.NoError(t, err)
-	assert.Empty(t, vectors)
+	_, err := c.EmbedDocuments(context.Background(), []string{"a"})
+	assert.ErrorIs(t, err, llmx.ErrEmptyResponse)
 }
 
 // ============================================================================

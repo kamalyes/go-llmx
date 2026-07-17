@@ -2,9 +2,9 @@
  * @Author: kamalyes 501893067@qq.com
  * @Date: 2025-11-07 22:50:00
  * @LastEditors: wmxuan 836551135@qq.com
- * @LastEditTime: 2026-07-09 21:38:16
+ * @LastEditTime: 2026-07-17 11:02:36
  * @FilePath: \go-llmx\embeddings\openai\embedder_test.go
- * @Description: OpenAI 兼容嵌入适配器测试 —— 批量/单条/index 归位/越界忽略/
+ * @Description: OpenAI 兼容嵌入适配器测试 —— 批量/单条/index 归位/向量数校验/
  * 错误映射/访问器. mock 基建独立维护（子包不依赖对话测试）
  *
  * Copyright (c) 2025 by kamalyes, All Rights Reserved.
@@ -137,8 +137,8 @@ func TestEmbed_IndexReordering(t *testing.T) {
 	assert.Equal(t, []float64{3.0}, vectors[2])
 }
 
-func TestEmbed_IndexOutOfBoundsIgnored(t *testing.T) {
-	// 越界 index（网关异常载荷）→ 忽略不越位
+func TestEmbed_VectorCountMismatch(t *testing.T) {
+	// 响应向量数与输入不匹配（网关异常载荷）→ 统一数量校验拦截
 	m := newMockServer(t, func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(w, `{"data": [
 			{"index": 0, "embedding": [1.0]},
@@ -147,21 +147,19 @@ func TestEmbed_IndexOutOfBoundsIgnored(t *testing.T) {
 	})
 
 	c := New("k", WithBaseURL(m.srv.URL))
-	vectors, err := c.EmbedDocuments(context.Background(), []string{"a"})
-	require.NoError(t, err)
-	require.Len(t, vectors, 1)
-	assert.Equal(t, []float64{1.0}, vectors[0])
+	_, err := c.EmbedDocuments(context.Background(), []string{"a"})
+	assert.ErrorIs(t, err, llmx.ErrEmptyResponse)
 }
 
 func TestEmbed_EmptyBatch(t *testing.T) {
+	// 空批量前置拦截（不出网）
 	m := newMockServer(t, func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, `{"data": []}`)
+		t.Error("空批量不应发出请求")
 	})
 
 	c := New("k", WithBaseURL(m.srv.URL))
-	vectors, err := c.EmbedDocuments(context.Background(), []string{})
-	require.NoError(t, err)
-	assert.Empty(t, vectors)
+	_, err := c.EmbedDocuments(context.Background(), []string{})
+	assert.ErrorIs(t, err, llmx.ErrInvalidRequest)
 }
 
 // ============================================================================

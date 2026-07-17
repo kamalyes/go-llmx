@@ -258,7 +258,8 @@ type wireUsage struct {
 // encodeMessages llmx 消息 → wire 协议.
 // [EN] Encode llmx messages to the wire protocol.
 //
-// 纯文本快速路径：单 TextPart 且非工具结果时 Content 直接发字符串（省 token、兼容性最好）
+// 纯文本快速路径：单 TextPart 且非工具结果时 Content 直接发字符串（省 token、兼容性最好）；
+// 慢路径预扫描 Content 统计 ToolCall 数量，ToolCalls 一次分配到位（避免 append 从 nil 逐个增长）
 func encodeMessages(messages []llmx.Message) []wireMessage {
 	out := make([]wireMessage, 0, len(messages))
 	for _, m := range messages {
@@ -272,6 +273,15 @@ func encodeMessages(messages []llmx.Message) []wireMessage {
 			}
 		}
 
+		toolCalls := 0
+		for _, p := range m.Content {
+			if _, ok := p.(llmx.ToolCallPart); ok {
+				toolCalls++
+			}
+		}
+		if toolCalls > 0 {
+			wm.ToolCalls = make([]wireToolUse, 0, toolCalls)
+		}
 		var parts []wireContentPart
 		for _, p := range m.Content {
 			switch part := p.(type) {
@@ -351,6 +361,8 @@ func decodeChoice(ch wireChoice) llmx.Choice {
 
 // decodeParts wire 消息内容 → llmx Part 集合.
 // [EN] Decode wire message content to llmx parts.
+//
+// ToolCalls 数量已知，parts 一次分配到位
 func decodeParts(m wireMessage) []llmx.Part {
 	var parts []llmx.Part
 	if s, ok := m.Content.(string); ok && s != "" {
@@ -366,6 +378,15 @@ func decodeParts(m wireMessage) []llmx.Part {
 					parts = append(parts, llmx.TextPart{Text: t})
 				}
 			}
+		}
+	}
+	if len(m.ToolCalls) > 0 {
+		if parts == nil {
+			parts = make([]llmx.Part, 0, len(m.ToolCalls))
+		} else {
+			grown := make([]llmx.Part, 0, len(parts)+len(m.ToolCalls))
+			grown = append(grown, parts...)
+			parts = grown
 		}
 	}
 	for _, tc := range m.ToolCalls {

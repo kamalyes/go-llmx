@@ -2,7 +2,7 @@
  * @Author: kamalyes 501893067@qq.com
  * @Date: 2025-12-09 20:35:00
  * @LastEditors: kamalyes 501893067@qq.com
- * @LastEditTime: 2026-06-27 10:18:33
+ * @LastEditTime: 2026-07-17 11:02:36
  * @FilePath: \go-llmx\adapters\ollama\ollama.go
  * @Description: Ollama 本地推理对话适配器 —— 编排 transport 传输与 wire 编解码.
  * NDJSON 流式（transport.DoNDJSON）；客户端基座与错误映射骨架见核心库 adapter 包；
@@ -187,14 +187,10 @@ func validateMessages(messages []llmx.Message) error {
 	return nil
 }
 
-// headers 认证头（本地部署可空，代理网关 Bearer 形态）.
-// [EN] Auth headers (empty locally, Bearer for gateways).
+// headers 认证头（本地部署可空，代理网关 Bearer 形态，委托基座共享缓存）.
+// [EN] Auth headers (empty locally, Bearer for gateways, delegated to the base cache).
 func (c *Client) headers() map[string]string {
-	h := map[string]string{}
-	if c.APIKey != "" {
-		h["Authorization"] = "Bearer " + c.APIKey
-	}
-	return h
+	return c.BearerHeaders()
 }
 
 // 编译期断言：实现 llmx.Model 契约.

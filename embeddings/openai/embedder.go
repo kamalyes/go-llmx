@@ -2,7 +2,7 @@
  * @Author: kamalyes 501893067@qq.com
  * @Date: 2025-11-07 22:37:00
  * @LastEditors: wmxuan 836551135@qq.com
- * @LastEditTime: 2026-07-09 21:38:16
+ * @LastEditTime: 2026-07-17 11:02:36
  * @FilePath: \go-llmx\embeddings\openai\embedder.go
  * @Description: OpenAI 兼容嵌入适配器 —— /embeddings 协议，覆盖 OpenAI 及
  * 兼容网关. 独立子包实现 llmx.Embedder（与对话客户端独立配置端点/模型）
@@ -75,6 +75,9 @@ func New(apiKey string, opts ...Option) *Client {
 // EmbedDocuments 实现 llmx.Embedder（批量嵌入，索引阶段）.
 // [EN] Implement llmx.Embedder (batch embedding, indexing phase).
 func (c *Client) EmbedDocuments(ctx context.Context, texts []string) ([][]float64, error) {
+	if err := adapter.ValidateEmbedTexts(texts); err != nil {
+		return nil, err
+	}
 	c.LogModel(ctx, c.Model, "embed", len(texts))
 
 	var wr wireResponse
@@ -88,6 +91,9 @@ func (c *Client) EmbedDocuments(ctx context.Context, texts []string) ([][]float6
 	// 部分网关 200 状态仍注入 error 字段
 	if wr.Error != nil {
 		return nil, adapter.WrapErrorBody(toErrorBody(wr.Error))
+	}
+	if len(wr.Data) != len(texts) {
+		return nil, adapter.ErrVectorCountMismatch(len(wr.Data), len(texts))
 	}
 
 	// 响应按 index 归位（协议保证 index 与输入顺序对应）
@@ -110,14 +116,10 @@ func (c *Client) EmbedQuery(ctx context.Context, text string) ([]float64, error)
 	return vectors[0], nil
 }
 
-// headers 认证头（Bearer 形态）.
-// [EN] Auth headers (Bearer style).
+// headers 认证头（Bearer 形态，委托基座共享缓存）.
+// [EN] Auth headers (Bearer, delegated to the base cache).
 func (c *Client) headers() map[string]string {
-	h := map[string]string{}
-	if c.APIKey != "" {
-		h["Authorization"] = "Bearer " + c.APIKey
-	}
-	return h
+	return c.BearerHeaders()
 }
 
 // 编译期断言：实现 llmx.Embedder 契约.

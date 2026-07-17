@@ -2,7 +2,7 @@
  * @Author: kamalyes 501893067@qq.com
  * @Date: 2025-08-11 20:58:00
  * @LastEditors: kamalyes 501893067@qq.com
- * @LastEditTime: 2026-05-25 20:52:00
+ * @LastEditTime: 2026-07-17 11:02:36
  * @FilePath: \go-llmx\adapter\client.go
  * @Description: 适配器公共基座 —— Client 字段/选项/访问器/请求组装骨架.
  * openai/anthropic 等对话适配器内嵌 Base 复用全部客户端管理能力，
@@ -17,6 +17,7 @@ import (
 	"context"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	llmx "github.com/kamalyes/go-llmx"
@@ -51,6 +52,26 @@ type Base struct {
 	// Logger 日志（缺省静默）.
 	// [EN] Logger (silent by default).
 	Logger logger.ILogger
+
+	// bearer Bearer 认证头缓存（独立小对象指针：锁不随 Base 值拷贝）.
+	// [EN] Bearer header cache (separate pointer so the lock is never copied).
+	bearer *bearerCache
+}
+
+// bearerCache Bearer 认证头缓存（密钥轮换检测 + 共享只读实例）.
+// [EN] Bearer header cache (rotation detection + shared read-only instance).
+type bearerCache struct {
+	// mu 保护并发请求下的缓存读写.
+	// [EN] Guards the cache under concurrent requests.
+	mu sync.Mutex
+
+	// key 缓存对应的密钥（轮换检测）.
+	// [EN] The key the cache was built for.
+	key string
+
+	// headers 共享只读认证头（命中时零分配）.
+	// [EN] Shared read-only headers (zero alloc on hit).
+	headers map[string]string
 }
 
 // NewBase 构造基座（path 必填；传输与日志取默认；BaseURL 由适配器填默认端点）.
@@ -61,6 +82,7 @@ func NewBase(path, apiKey, defaultModel string) Base {
 		Model:  defaultModel,
 		Path:   path,
 		Logger: logger.NewEmptyLogger(),
+		bearer: &bearerCache{},
 	}
 	b.TC = transport.NewClient(transport.WithLogger(b.Logger))
 	return b
