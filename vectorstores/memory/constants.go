@@ -22,3 +22,15 @@ const (
 	// [EN] Minimum valid vector dimension.
 	MinVectorDim = 1
 )
+
+// 并发分片阈值（检索路径）.
+// [EN] Sharding thresholds for the search path.
+const (
+	// ShardThreshold 低于此条数走单线程路径（goroutine 开销反噬临界点）.
+	// [EN] Below this count the serial path wins.
+	ShardThreshold = 4096
+
+	// ShardMaxWorkers 分片 worker 上限（防 GOMAXPROCS 过大反而抖动）.
+	// [EN] Worker cap.
+	ShardMaxWorkers = 16
+)
