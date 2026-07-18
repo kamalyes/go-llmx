@@ -2,9 +2,9 @@
  * @Author: wmxuan 836551135@qq.com
  * @Date: 2026-07-11 20:51:32
  * @LastEditors: wmxuan 836551135@qq.com
- * @LastEditTime: 2026-07-11 20:51:32
+ * @LastEditTime: 2026-07-18 10:36:08
  * @FilePath: \go-llmx\embeddings\cohere\constants.go
- * @Description: Cohere 嵌入适配器常量 —— 默认端点/模型/协议路径/input_type 字面量
+ * @Description: Cohere 嵌入适配器常量 —— 默认端点/模型/协议路径/input_type 字面量/批量上限
  *
  * Copyright (c) 2026 by kamalyes, All Rights Reserved.
  */
@@ -24,6 +24,12 @@ const (
 	// [EN] Embedding protocol path (single source of truth).
 	EmbedPath = "/embed"
 )
+
+// embedBatchMaxTexts 单请求文本数上限（Cohere 官方 /v2/embed 限制 96 条，
+// 超出自动拆批有界并行）.
+// [EN] Max texts per request (official Cohere limit; excess batches out
+// bounded-parallel).
+const embedBatchMaxTexts = 96
 
 // input_type 字面量（非对称检索语义：索引文档与查询分开优化）.
 // [EN] input_type literals (asymmetric retrieval semantics).

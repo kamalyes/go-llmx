@@ -2,10 +2,10 @@
  * @Author: wmxuan 836551135@qq.com
  * @Date: 2026-07-11 21:06:43
  * @LastEditors: wmxuan 836551135@qq.com
- * @LastEditTime: 2026-07-11 21:06:43
+ * @LastEditTime: 2026-07-18 10:59:37
  * @FilePath: \go-llmx\embeddings\cohere\embedder_test.go
  * @Description: Cohere 嵌入适配器测试 —— input_type 非对称语义、批量/单条协议、
- * 数量不齐哨兵、错误映射、认证头
+ * 96 上限自动拆批、数量不齐哨兵、错误映射、认证头
  *
  * Copyright (c) 2026 by kamalyes, All Rights Reserved.
  */
@@ -18,6 +18,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sort"
+	"strings"
+	"sync"
 	"testing"
 
 	llmx "github.com/kamalyes/go-llmx"
@@ -99,6 +102,58 @@ func TestEmbedDocuments_Batch(t *testing.T) {
 	require.Len(t, vectors, 2)
 	assert.Equal(t, []float64{0, 1}, vectors[0])
 	assert.Equal(t, []float64{1, 1}, vectors[1])
+}
+
+func TestEmbedDocuments_AutoBatching(t *testing.T) {
+	// 97 条 → 96 + 1 两批（有界并行）；按文本序号回放验证全局归位
+	var (
+		mu    sync.Mutex
+		sizes []int
+	)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer test-key" {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprint(w, `{"message":"unauthorized"}`)
+			return
+		}
+		var req wireRequest
+		require.NoError(t, json.NewDecoder(r.Body).Decode(&req))
+		require.Equal(t, inputTypeDocument, req.InputType)
+
+		mu.Lock()
+		sizes = append(sizes, len(req.Texts))
+		mu.Unlock()
+
+		out := `{"embeddings": {"float": [`
+		for i, text := range req.Texts {
+			if i > 0 {
+				out += ","
+			}
+			out += fmt.Sprintf("[%s.0, 1]", strings.TrimPrefix(text, "文本"))
+		}
+		fmt.Fprint(w, out+`]}}`)
+	}))
+	defer srv.Close()
+	c := New("test-key", WithBaseURL(srv.URL))
+
+	texts := make([]string, 97)
+	for i := range texts {
+		texts[i] = fmt.Sprintf("文本%d", i)
+	}
+	vectors, err := c.EmbedDocuments(context.Background(), texts)
+	require.NoError(t, err)
+	require.Len(t, vectors, 97)
+
+	// 跨批全局归位：向量首维与其输入序号一致
+	for i, v := range vectors {
+		assert.InDelta(t, float64(i), v[0], 1e-9)
+	}
+
+	mu.Lock()
+	sorted := append([]int(nil), sizes...)
+	mu.Unlock()
+	sort.Ints(sorted)
+	assert.Equal(t, []int{1, 96}, sorted)
 }
 
 func TestEmbed_CountMismatch(t *testing.T) {

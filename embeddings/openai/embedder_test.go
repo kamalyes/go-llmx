@@ -2,10 +2,10 @@
  * @Author: kamalyes 501893067@qq.com
  * @Date: 2025-11-07 22:50:00
  * @LastEditors: wmxuan 836551135@qq.com
- * @LastEditTime: 2026-07-17 11:02:36
+ * @LastEditTime: 2026-07-18 10:03:26
  * @FilePath: \go-llmx\embeddings\openai\embedder_test.go
  * @Description: OpenAI 兼容嵌入适配器测试 —— 批量/单条/index 归位/向量数校验/
- * 错误映射/访问器. mock 基建独立维护（子包不依赖对话测试）
+ * 超批拆分并行合并/换行压平/错误映射/访问器. mock 基建独立维护
  *
  * Copyright (c) 2025 by kamalyes, All Rights Reserved.
  */
@@ -19,6 +19,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	llmx "github.com/kamalyes/go-llmx"
@@ -160,6 +161,74 @@ func TestEmbed_EmptyBatch(t *testing.T) {
 	c := New("k", WithBaseURL(m.srv.URL))
 	_, err := c.EmbedDocuments(context.Background(), []string{})
 	assert.ErrorIs(t, err, llmx.ErrInvalidRequest)
+}
+
+// ============================================================================
+// 超批拆分与换行压平
+// ============================================================================
+
+func TestEmbed_BatchSplitAndMerge(t *testing.T) {
+	// 5 条 / 每批 2 → 3 次请求；按文本内容回放向量，验证跨批全局归位
+	var calls int32
+	var m *mockServer
+	m = newMockServer(t, func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&calls, 1)
+		inputs := m.body("input").([]any)
+		out := `{"data": [`
+		for i, v := range inputs {
+			if i > 0 {
+				out += ","
+			}
+			out += fmt.Sprintf(`{"index": %d, "embedding": [%s.0, 0.5]}`, i, v.(string))
+		}
+		fmt.Fprint(w, out+`]}`)
+	})
+
+	c := New("k", WithBaseURL(m.srv.URL), WithBatchSize(2))
+	texts := []string{"0", "1", "2", "3", "4"}
+	vectors, err := c.EmbedDocuments(context.Background(), texts)
+	require.NoError(t, err)
+
+	require.Len(t, vectors, 5)
+	// 每条向量首维与其全局输入序号一致（跨批合并有序）
+	for i, v := range vectors {
+		assert.InDelta(t, float64(i), v[0], 1e-9)
+	}
+	assert.Equal(t, int32(3), calls)
+}
+
+func TestEmbed_BatchErrorFailsAll(t *testing.T) {
+	// 任一批失败 → 整体失败（首错返回，其余批随派生 ctx 中止）
+	m := newMockServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(500)
+		fmt.Fprint(w, `{"error": {"message": "boom", "type": "api_error"}}`)
+	})
+
+	c := New("k", WithBaseURL(m.srv.URL), WithBatchSize(1))
+	_, err := c.EmbedDocuments(context.Background(), []string{"a", "b"})
+	assert.ErrorIs(t, err, llmx.ErrAPIServerError)
+}
+
+func TestEmbed_StripNewLines(t *testing.T) {
+	// 默认压平换行（拷贝副本，不改调用方字符串）
+	m := newMockServer(t, func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, embeddingsResponder(1))
+	})
+
+	c := New("k", WithBaseURL(m.srv.URL))
+	text := "第一行\n第二行"
+	_, err := c.EmbedQuery(context.Background(), text)
+	require.NoError(t, err)
+	assert.Equal(t, "第一行 第二行", m.body("input").([]any)[0])
+
+	// WithStripNewLines(false) 原样发送
+	m2 := newMockServer(t, func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, embeddingsResponder(1))
+	})
+	c2 := New("k", WithBaseURL(m2.srv.URL), WithStripNewLines(false))
+	_, err = c2.EmbedQuery(context.Background(), text)
+	require.NoError(t, err)
+	assert.Equal(t, "第一行\n第二行", m2.body("input").([]any)[0])
 }
 
 // ============================================================================

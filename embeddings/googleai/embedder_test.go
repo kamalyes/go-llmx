@@ -2,10 +2,10 @@
  * @Author: wmxuan 836551135@qq.com
  * @Date: 2026-07-09 21:16:52
  * @LastEditors: wmxuan 836551135@qq.com
- * @LastEditTime: 2026-07-09 21:38:07
+ * @LastEditTime: 2026-07-18 10:27:11
  * @FilePath: \go-llmx\embeddings\googleai\embedder_test.go
  * @Description: Google AI 嵌入适配器测试 —— 批量/单条协议、taskType 语义、
- * 超限自动分批、错误状态映射、认证头
+ * 超限自动分批（有界并行）、错误状态映射、认证头
  *
  * Copyright (c) 2026 by kamalyes, All Rights Reserved.
  */
@@ -18,7 +18,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strings"
+	"sync"
 	"testing"
 
 	llmx "github.com/kamalyes/go-llmx"
@@ -82,12 +84,20 @@ func TestEmbedDocuments_Batch(t *testing.T) {
 }
 
 func TestEmbedDocuments_AutoBatching(t *testing.T) {
-	var batchSizes []int
-	srv := embedMock(t, func(n int) { batchSizes = append(batchSizes, n) })
+	// 并行批 hook 收集需互斥；完成序不定，排序后断言批次大小
+	var (
+		mu         sync.Mutex
+		batchSizes []int
+	)
+	srv := embedMock(t, func(n int) {
+		mu.Lock()
+		batchSizes = append(batchSizes, n)
+		mu.Unlock()
+	})
 	defer srv.Close()
 	c := New("test-key", WithBaseURL(srv.URL))
 
-	// 250 条 → 100 + 100 + 50 三批
+	// 250 条 → 100 + 100 + 50 三批（有界并行）
 	texts := make([]string, 250)
 	for i := range texts {
 		texts[i] = fmt.Sprintf("文本%d", i)
@@ -95,7 +105,12 @@ func TestEmbedDocuments_AutoBatching(t *testing.T) {
 	vectors, err := c.EmbedDocuments(context.Background(), texts)
 	require.NoError(t, err)
 	require.Len(t, vectors, 250)
-	assert.Equal(t, []int{100, 100, 50}, batchSizes)
+
+	mu.Lock()
+	sizes := append([]int(nil), batchSizes...)
+	mu.Unlock()
+	sort.Ints(sizes)
+	assert.Equal(t, []int{50, 100, 100}, sizes)
 }
 
 func TestEmbedQuery_Single(t *testing.T) {

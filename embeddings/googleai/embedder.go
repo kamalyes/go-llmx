@@ -2,11 +2,11 @@
  * @Author: wmxuan 836551135@qq.com
  * @Date: 2026-07-09 21:09:38
  * @LastEditors: wmxuan 836551135@qq.com
- * @LastEditTime: 2026-07-17 11:02:36
+ * @LastEditTime: 2026-07-18 10:15:59
  * @FilePath: \go-llmx\embeddings\googleai\embedder.go
  * @Description: Google AI 嵌入适配器 —— embedContent / batchEmbedContents 协议.
  * 检索语义非对称：索引走 RETRIEVAL_DOCUMENT、查询走 RETRIEVAL_QUERY（模型分开优化）；
- * 批量自动按 100 条分批（官方上限，内部消化不暴露配置）
+ * 批量自动按 100 条分批（官方上限，内部消化不暴露配置），有界并行派发
  *
  * Copyright (c) 2026 by kamalyes, All Rights Reserved.
  */
@@ -88,40 +88,41 @@ func (c *Client) headers() map[string]string {
 // EmbedDocuments 实现 llmx.Embedder（批量嵌入，索引阶段，taskType=RETRIEVAL_DOCUMENT）.
 // [EN] Implement llmx.Embedder (batch, indexing phase).
 //
-// 单批上限 100 条（官方限制），超出自动分批顺序提交，返回顺序与输入一致
+// 单批上限 100 条（官方限制），超出自动分批有界并行，各批写入互斥区间
+// 结果与输入顺序一致
 func (c *Client) EmbedDocuments(ctx context.Context, texts []string) ([][]float64, error) {
 	if err := adapter.ValidateEmbedTexts(texts); err != nil {
 		return nil, err
 	}
 	c.LogModel(ctx, c.Model, "embed", len(texts))
 
-	vectors := make([][]float64, 0, len(texts))
-	for start := 0; start < len(texts); start += maxBatchRequests {
-		end := start + maxBatchRequests
-		if end > len(texts) {
-			end = len(texts)
-		}
-		batch := texts[start:end]
+	vectors := make([][]float64, len(texts))
+	if err := adapter.ParallelBatches(ctx, len(texts), maxBatchRequests, adapter.EmbedBatchWorkers,
+		func(ctx context.Context, start, end int) error {
+			batch := texts[start:end]
 
-		req := wireBatchRequest{Requests: make([]wireEmbedRequest, len(batch))}
-		for i, text := range batch {
-			req.Requests[i] = wireEmbedRequest{
-				Content:  wireContent{Parts: []wirePart{{Text: text}}},
-				TaskType: taskTypeDocument,
+			req := wireBatchRequest{Requests: make([]wireEmbedRequest, len(batch))}
+			for i, text := range batch {
+				req.Requests[i] = wireEmbedRequest{
+					Content:  wireContent{Parts: []wirePart{{Text: text}}},
+					TaskType: taskTypeDocument,
+				}
 			}
-		}
 
-		var wr wireBatchResponse
-		url := c.endpoint(c.Model, methodBatchEmbedContents)
-		if err := c.TC.PostJSON(ctx, url, req, &wr, c.headers()); err != nil {
-			return nil, adapter.MapTransportError(err, classifier{})
-		}
-		if len(wr.Embeddings) != len(batch) {
-			return nil, adapter.ErrVectorCountMismatch(len(wr.Embeddings), len(batch))
-		}
-		for _, e := range wr.Embeddings {
-			vectors = append(vectors, e.Values)
-		}
+			var wr wireBatchResponse
+			url := c.endpoint(c.Model, methodBatchEmbedContents)
+			if err := c.TC.PostJSON(ctx, url, req, &wr, c.headers()); err != nil {
+				return adapter.MapTransportError(err, classifier{})
+			}
+			if len(wr.Embeddings) != len(batch) {
+				return adapter.ErrVectorCountMismatch(len(wr.Embeddings), len(batch))
+			}
+			for i, e := range wr.Embeddings {
+				vectors[start+i] = e.Values
+			}
+			return nil
+		}); err != nil {
+		return nil, err
 	}
 	return vectors, nil
 }
